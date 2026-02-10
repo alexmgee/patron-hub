@@ -7,7 +7,8 @@ import {
     Home,
     RefreshCw,
     Filter,
-    Plus
+    Plus,
+    LogOut
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -125,6 +126,17 @@ export default function DashboardLayout(props: DashboardLayoutProps) {
                             >
                                 <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
                                 {isSyncing ? 'Syncing...' : 'Sync'}
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+                                    window.location.href = '/login';
+                                }}
+                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 transition-colors hover:bg-zinc-800"
+                                aria-label="Logout"
+                                title="Logout"
+                            >
+                                <LogOut className="h-4 w-4 text-zinc-400" />
                             </button>
                             <Link
                                 href="/settings"

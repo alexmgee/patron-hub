@@ -3,8 +3,12 @@ import { db } from '@/lib/db';
 import { subscriptions, syncLogs } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { getSetting } from '@/lib/db/settings';
+import { getAuthUser } from '@/lib/auth/api';
 
 export async function POST() {
+  const user = await getAuthUser();
+  if (!user) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+
   const autoSyncEnabled = await getSetting<boolean>('auto_sync_enabled', true);
   if (!autoSyncEnabled) {
     return NextResponse.json({ ok: false, disabled: true, error: 'Auto-sync is disabled in settings.' }, { status: 409 });

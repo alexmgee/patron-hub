@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { subscriptions } from '@/lib/db/schema';
+import { getAuthUser } from '@/lib/auth/api';
 
 type Payload = {
   syncEnabled?: boolean;
@@ -9,6 +10,9 @@ type Payload = {
 };
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const user = await getAuthUser();
+  if (!user) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+
   const { id: idParam } = await ctx.params;
   const id = Number(idParam);
   if (!Number.isFinite(id)) return NextResponse.json({ ok: false, error: 'invalid id' }, { status: 400 });

@@ -15,6 +15,13 @@
       "when": 1770700044584,
       "tag": "0001_absent_bruce_banner",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1770751101394,
+      "tag": "0002_perfect_red_wolf",
+      "breakpoints": true
     }
   ]
 }

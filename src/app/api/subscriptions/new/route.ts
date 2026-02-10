@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { creators, subscriptions } from '@/lib/db/schema';
+import { getAuthUser } from '@/lib/auth/api';
+import { getSetting } from '@/lib/db/settings';
 
 type Payload = {
   creatorName: string;
@@ -13,6 +15,9 @@ type Payload = {
 };
 
 export async function POST(req: Request) {
+  const user = await getAuthUser();
+  if (!user) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+
   const body = (await req.json().catch(() => null)) as Payload | null;
   if (!body) return NextResponse.json({ ok: false, error: 'invalid json' }, { status: 400 });
 
@@ -29,6 +34,7 @@ export async function POST(req: Request) {
   const currency = body.currency ? String(body.currency).trim().toUpperCase().slice(0, 3) : 'USD';
 
   const now = new Date();
+  const globalAutoDownloadEnabled = await getSetting<boolean>('auto_download_enabled', true);
 
   // Reuse creator if slug already exists.
   const existing = await db.select({ id: creators.id }).from(creators).where(eq(creators.slug, creatorSlug)).limit(1);
@@ -61,6 +67,7 @@ export async function POST(req: Request) {
     status: 'active',
     memberSince: now,
     syncEnabled: platform !== 'gumroad',
+    autoDownloadEnabled: globalAutoDownloadEnabled,
     createdAt: now,
     updatedAt: now,
   });

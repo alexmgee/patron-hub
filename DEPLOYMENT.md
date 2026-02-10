@@ -23,6 +23,9 @@ Patron Hub is local-first (SQLite + filesystem archive). The simplest "live" dep
 5. Open:
    - LAN mode: `http://<server-ip>:3000`
 
+6. First-time setup:
+   - Visit `http://<server-ip>:3000/setup` to create the first admin user.
+
 ## Public Access (Domain + TLS via Caddy)
 
 This option makes the app reachable from outside your network with a normal domain name and HTTPS.

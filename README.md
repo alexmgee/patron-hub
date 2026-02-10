@@ -19,6 +19,8 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+On first run, create an admin user at `http://localhost:3000/setup`.
+
 ### Local storage paths
 
 By default the app stores:

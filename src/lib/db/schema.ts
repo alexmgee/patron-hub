@@ -1,6 +1,32 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 
 // ============================================================================
+// USERS
+// Local auth users (self-hosted)
+// ============================================================================
+export const users = sqliteTable('users', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  email: text('email').notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+});
+
+// ============================================================================
+// SESSIONS
+// Session tokens are stored hashed (sha256) to reduce impact of DB leakage.
+// ============================================================================
+export const sessions = sqliteTable('sessions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull().unique(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+});
+
+// ============================================================================
 // CREATORS
 // A creator can exist across multiple platforms (e.g., same person on Patreon + Substack)
 // ============================================================================
@@ -141,6 +167,12 @@ export const settings = sqliteTable('settings', {
 // ============================================================================
 export type Creator = typeof creators.$inferSelect;
 export type NewCreator = typeof creators.$inferInsert;
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+
+export type Session = typeof sessions.$inferSelect;
+export type NewSession = typeof sessions.$inferInsert;
 
 export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
