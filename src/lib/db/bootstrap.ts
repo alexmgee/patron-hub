@@ -33,24 +33,26 @@ function getMigrationsDir(): string {
   return path.join(process.cwd(), 'drizzle');
 }
 
-function findInitialMigrationFile(): string | null {
+function listMigrationFiles(): string[] {
   const dir = getMigrationsDir();
-  if (!fs.existsSync(dir)) return null;
+  if (!fs.existsSync(dir)) return [];
   const entries = fs.readdirSync(dir);
-  // Prefer the first numbered migration.
-  const sqlFile = entries
+  return entries
     .filter((f) => /^\d+_.*\.sql$/.test(f))
-    .sort((a, b) => a.localeCompare(b))[0];
-  return sqlFile ? path.join(dir, sqlFile) : null;
+    .sort((a, b) => a.localeCompare(b))
+    .map((f) => path.join(dir, f));
 }
 
-function applyMigration(sqlite: Database.Database): void {
-  const filePath = findInitialMigrationFile();
-  if (!filePath) {
+function applyMigrations(sqlite: Database.Database): void {
+  const filePaths = listMigrationFiles();
+  if (filePaths.length === 0) {
     throw new Error('No drizzle SQL migration found in ./drizzle');
   }
-  const sql = fs.readFileSync(filePath, 'utf8');
-  sqlite.exec(sql);
+
+  for (const filePath of filePaths) {
+    const sql = fs.readFileSync(filePath, 'utf8');
+    sqlite.exec(sql);
+  }
 }
 
 function seed(sqlite: Database.Database): void {
@@ -185,7 +187,7 @@ export function bootstrapDb(sqlite: Database.Database): void {
 
   // If schema is missing, apply migration.
   if (!tableExists(sqlite, 'creators') || !tableExists(sqlite, 'subscriptions')) {
-    applyMigration(sqlite);
+    applyMigrations(sqlite);
   }
 
   // Apply lightweight schema upgrades for existing DBs.

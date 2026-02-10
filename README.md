@@ -43,3 +43,7 @@ Disable with `PATRON_HUB_SKIP_BOOTSTRAP=1`.
 ## Status
 
 UI is functional and now DB-backed. Ingestion/adapters and real downloads are not implemented yet; “Sync” and “Archive” are placeholder endpoints that write to the local DB.
+
+## Deployment
+
+For a home server deployment (Docker Compose + persistent volumes), see `DEPLOYMENT.md`.

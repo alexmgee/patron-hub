@@ -1,0 +1,1 @@
+ALTER TABLE `subscriptions` ADD `auto_download_enabled` integer DEFAULT true NOT NULL;

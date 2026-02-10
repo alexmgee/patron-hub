@@ -1,0 +1,16 @@
+services:
+  patron-hub:
+    build: .
+    image: patron-hub:local
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      PATRON_HUB_DATA_DIR: /data
+      PATRON_HUB_ARCHIVE_DIR: /archive
+    volumes:
+      - ./server-data:/data
+      - ./server-archive:/archive
+    restart: unless-stopped
+
