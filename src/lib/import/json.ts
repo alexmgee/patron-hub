@@ -19,6 +19,7 @@ export type ImportPayload = {
       status?: 'active' | 'paused' | 'cancelled';
       memberSince?: string | null;
       syncEnabled?: boolean;
+      autoDownloadEnabled?: boolean;
     };
     content?: Array<{
       title: string;
@@ -119,6 +120,7 @@ export async function importFromJson(payload: ImportPayload): Promise<{
     const status = sub.status ?? 'active';
     const memberSinceMs = parseDateToMs(sub.memberSince ?? null);
     const syncEnabled = typeof sub.syncEnabled === 'boolean' ? sub.syncEnabled : true;
+    const autoDownloadEnabled = typeof sub.autoDownloadEnabled === 'boolean' ? sub.autoDownloadEnabled : true;
 
     let subscriptionId: number | undefined = existingSub[0]?.id;
 
@@ -133,6 +135,7 @@ export async function importFromJson(payload: ImportPayload): Promise<{
         status,
         memberSince: memberSinceMs ? new Date(memberSinceMs) : null,
         syncEnabled,
+        autoDownloadEnabled,
         createdAt: now,
         updatedAt: now,
       });
@@ -156,6 +159,7 @@ export async function importFromJson(payload: ImportPayload): Promise<{
           status,
           memberSince: memberSinceMs ? new Date(memberSinceMs) : null,
           syncEnabled,
+          autoDownloadEnabled,
           updatedAt: now,
         })
         .where(eq(subscriptions.id, subscriptionId));

@@ -23,9 +23,10 @@ const sqlite = new Database(DB_PATH);
 sqlite.pragma('journal_mode = WAL');
 
 // Dev-friendly bootstrap (create schema + seed sample data).
-// Avoid side effects during `next build` (NODE_ENV=production) unless explicitly forced.
-if (process.env.NODE_ENV !== 'production' || process.env.PATRON_HUB_FORCE_BOOTSTRAP === '1') {
-    bootstrapDb(sqlite);
+// Avoid side effects during `next build` while still allowing schema upgrades at runtime.
+const isNextBuild = process.env.NEXT_PHASE === 'phase-production-build';
+if (!isNextBuild || process.env.PATRON_HUB_FORCE_BOOTSTRAP === '1') {
+  bootstrapDb(sqlite);
 }
 
 // Create Drizzle instance with schema

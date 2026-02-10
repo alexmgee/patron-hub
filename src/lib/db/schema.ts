@@ -41,6 +41,7 @@ export const subscriptions = sqliteTable('subscriptions', {
   // Sync tracking
   lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' }),
   syncEnabled: integer('sync_enabled', { mode: 'boolean' }).notNull().default(true),
+  autoDownloadEnabled: integer('auto_download_enabled', { mode: 'boolean' }).notNull().default(true),
   
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),

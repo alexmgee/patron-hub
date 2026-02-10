@@ -114,6 +114,7 @@ export async function getDashboardCreators(): Promise<DashboardCreator[]> {
 
 export type CreatorDetail = {
   id: number;
+  subscriptionId: number;
   name: string;
   slug: string;
   avatarUrl: string | null;
@@ -122,6 +123,8 @@ export type CreatorDetail = {
   costCents: number;
   currency: string;
   memberSinceIso: string | null;
+  syncEnabled: boolean;
+  autoDownloadEnabled: boolean;
 };
 
 export type CreatorContentItem = {
@@ -140,6 +143,7 @@ export async function getCreatorDetail(creatorId: number): Promise<CreatorDetail
   const row = await db
     .select({
       id: creators.id,
+      subscriptionId: subscriptions.id,
       name: creators.name,
       slug: creators.slug,
       avatarUrl: creators.avatarUrl,
@@ -148,6 +152,8 @@ export async function getCreatorDetail(creatorId: number): Promise<CreatorDetail
       costCents: subscriptions.costCents,
       currency: subscriptions.currency,
       memberSince: subscriptions.memberSince,
+      syncEnabled: subscriptions.syncEnabled,
+      autoDownloadEnabled: subscriptions.autoDownloadEnabled,
     })
     .from(creators)
     .innerJoin(subscriptions, eq(subscriptions.creatorId, creators.id))
@@ -159,6 +165,7 @@ export async function getCreatorDetail(creatorId: number): Promise<CreatorDetail
 
   return {
     id: first.id,
+    subscriptionId: first.subscriptionId,
     name: first.name,
     slug: first.slug,
     avatarUrl: first.avatarUrl ?? null,
@@ -167,6 +174,8 @@ export async function getCreatorDetail(creatorId: number): Promise<CreatorDetail
     costCents: first.costCents,
     currency: first.currency,
     memberSinceIso: toIsoOrNull(first.memberSince),
+    syncEnabled: Boolean(first.syncEnabled),
+    autoDownloadEnabled: Boolean(first.autoDownloadEnabled),
   };
 }
 
@@ -207,4 +216,3 @@ export async function getCreatorContentItems(creatorId: number): Promise<Creator
     externalUrl: r.externalUrl ?? null,
   }));
 }
-

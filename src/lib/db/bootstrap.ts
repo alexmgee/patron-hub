@@ -17,6 +17,18 @@ function tableExists(sqlite: Database.Database, tableName: string): boolean {
   return Boolean(row?.name);
 }
 
+function columnExists(sqlite: Database.Database, tableName: string, columnName: string): boolean {
+  const rows = sqlite.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  return rows.some((r) => r.name === columnName);
+}
+
+function ensureSubscriptionColumns(sqlite: Database.Database): void {
+  // Keep schema migrations lightweight for early-stage local development.
+  if (tableExists(sqlite, 'subscriptions') && !columnExists(sqlite, 'subscriptions', 'auto_download_enabled')) {
+    sqlite.exec(`ALTER TABLE subscriptions ADD COLUMN auto_download_enabled integer DEFAULT true NOT NULL;`);
+  }
+}
+
 function getMigrationsDir(): string {
   return path.join(process.cwd(), 'drizzle');
 }
@@ -175,6 +187,9 @@ export function bootstrapDb(sqlite: Database.Database): void {
   if (!tableExists(sqlite, 'creators') || !tableExists(sqlite, 'subscriptions')) {
     applyMigration(sqlite);
   }
+
+  // Apply lightweight schema upgrades for existing DBs.
+  ensureSubscriptionColumns(sqlite);
 
   // Seed sample data in development (or when explicitly forced).
   if (process.env.NODE_ENV !== 'production' || process.env.PATRON_HUB_FORCE_SEED === '1') {

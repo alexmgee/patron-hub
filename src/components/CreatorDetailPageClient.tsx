@@ -54,6 +54,10 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
   const [selectedType, setSelectedType] = useState<ContentType | 'all'>('all');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [syncEnabled, setSyncEnabled] = useState<boolean>(creator.syncEnabled);
+  const [autoDownloadEnabled, setAutoDownloadEnabled] = useState<boolean>(creator.autoDownloadEnabled);
+  const [savingSubSettings, setSavingSubSettings] = useState(false);
+  const [subSettingsError, setSubSettingsError] = useState<string | null>(null);
 
   const contentBreakdown = useMemo(() => {
     return items.reduce((acc, item) => {
@@ -100,6 +104,23 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
   const onMarkSeen = async (contentItemId: number) => {
     await fetch(`/api/content/${contentItemId}/seen`, { method: 'POST' }).catch(() => {});
     window.location.reload();
+  };
+
+  const updateSubscriptionSettings = async (updates: { syncEnabled?: boolean; autoDownloadEnabled?: boolean }) => {
+    setSavingSubSettings(true);
+    setSubSettingsError(null);
+    const res = await fetch(`/api/subscriptions/${creator.subscriptionId}/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(updates),
+    }).catch(() => null);
+
+    if (!res || !res.ok) {
+      const txt = res ? await res.text().catch(() => '') : '';
+      setSubSettingsError(txt || 'Failed to save settings.');
+    }
+
+    setSavingSubSettings(false);
   };
 
   return (
@@ -247,12 +268,34 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
               <div className="space-y-3 text-sm">
                 <label className="flex items-center justify-between">
                   <span className="text-zinc-400">Auto-sync</span>
-                  <input type="checkbox" defaultChecked className="rounded" />
+                  <input
+                    type="checkbox"
+                    checked={syncEnabled}
+                    disabled={savingSubSettings}
+                    onChange={async (e) => {
+                      const next = e.target.checked;
+                      setSyncEnabled(next);
+                      await updateSubscriptionSettings({ syncEnabled: next });
+                    }}
+                    className="rounded"
+                  />
                 </label>
                 <label className="flex items-center justify-between">
                   <span className="text-zinc-400">Auto-download</span>
-                  <input type="checkbox" defaultChecked className="rounded" />
+                  <input
+                    type="checkbox"
+                    checked={autoDownloadEnabled}
+                    disabled={savingSubSettings}
+                    onChange={async (e) => {
+                      const next = e.target.checked;
+                      setAutoDownloadEnabled(next);
+                      await updateSubscriptionSettings({ autoDownloadEnabled: next });
+                    }}
+                    className="rounded"
+                  />
                 </label>
+                {subSettingsError && <div className="text-xs text-red-300">{subSettingsError}</div>}
+                {savingSubSettings && <div className="text-xs text-zinc-500">Saving…</div>}
               </div>
             </div>
           </aside>
@@ -390,4 +433,3 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
     </div>
   );
 }
-
