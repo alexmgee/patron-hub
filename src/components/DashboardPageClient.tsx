@@ -12,6 +12,24 @@ type Stats = {
   newItemCount: number;
 };
 
+type NewSubscriptionPayload = {
+  creatorName: string;
+  platform: 'patreon' | 'substack' | 'gumroad' | 'discord';
+  tierName: string;
+  costCents: number;
+  currency: string;
+};
+
+function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+}
+
 export default function DashboardPageClient(props: { creators: CreatorCardData[]; stats: Stats }) {
   const { creators, stats } = props;
   const router = useRouter();
@@ -19,6 +37,15 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'new'>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'name' | 'cost' | 'new'>('recent');
+  const [addOpen, setAddOpen] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addForm, setAddForm] = useState<NewSubscriptionPayload>({
+    creatorName: '',
+    platform: 'patreon',
+    tierName: '',
+    costCents: 0,
+    currency: 'USD',
+  });
 
   const filteredCreators = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -55,6 +82,35 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
     });
   };
 
+  const handleCreateSubscription = async () => {
+    setAddError(null);
+    const creatorName = addForm.creatorName.trim();
+    if (!creatorName) {
+      setAddError('Creator name is required.');
+      return;
+    }
+    const creatorSlug = slugify(creatorName);
+    if (!creatorSlug) {
+      setAddError('Creator name is invalid.');
+      return;
+    }
+
+    const res = await fetch('/api/subscriptions/new', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...addForm, creatorName, creatorSlug }),
+    }).catch(() => null);
+
+    if (!res || !res.ok) {
+      const txt = res ? await res.text().catch(() => '') : '';
+      setAddError(txt || 'Failed to create subscription.');
+      return;
+    }
+
+    setAddOpen(false);
+    window.location.reload();
+  };
+
   return (
     <DashboardLayout
       stats={stats}
@@ -65,6 +121,7 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
       sortBy={sortBy}
       onSortByChange={setSortBy}
       onSync={handleSync}
+      onAddSubscription={() => setAddOpen(true)}
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filteredCreators.map((creator) => (
@@ -85,7 +142,108 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
           <p className="mb-4 max-w-md text-zinc-400">Try adjusting your search, filters, or sort.</p>
         </div>
       )}
+
+      {addOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-xl">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-zinc-100">Add Subscription</h2>
+              <p className="text-sm text-zinc-500">Manual entry for now. Adapters will come later.</p>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block">
+                <div className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Creator name</div>
+                <input
+                  value={addForm.creatorName}
+                  onChange={(e) => setAddForm((f) => ({ ...f, creatorName: e.target.value }))}
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
+                  placeholder="e.g. Blender Guru"
+                  autoFocus
+                />
+                <div className="mt-1 text-xs text-zinc-600">
+                  Slug: <span className="font-mono">{slugify(addForm.creatorName || 'creator')}</span>
+                </div>
+              </label>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Platform</div>
+                  <select
+                    value={addForm.platform}
+                    onChange={(e) => setAddForm((f) => ({ ...f, platform: e.target.value as NewSubscriptionPayload['platform'] }))}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-violet-500 focus:outline-none"
+                  >
+                    <option value="patreon">Patreon</option>
+                    <option value="substack">Substack</option>
+                    <option value="gumroad">Gumroad</option>
+                    <option value="discord">Discord</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Tier name</div>
+                  <input
+                    value={addForm.tierName}
+                    onChange={(e) => setAddForm((f) => ({ ...f, tierName: e.target.value }))}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
+                    placeholder="Pro Tier"
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Monthly cost (USD)</div>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={(addForm.costCents / 100).toFixed(2)}
+                    onChange={(e) => {
+                      const dollars = Number(e.target.value);
+                      setAddForm((f) => ({ ...f, costCents: Number.isFinite(dollars) ? Math.round(dollars * 100) : 0 }));
+                    }}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-violet-500 focus:outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Currency</div>
+                  <input
+                    value={addForm.currency}
+                    onChange={(e) => setAddForm((f) => ({ ...f, currency: e.target.value.toUpperCase().slice(0, 3) }))}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-violet-500 focus:outline-none"
+                    placeholder="USD"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {addError && (
+              <div className="mt-4 rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+                {addError}
+              </div>
+            )}
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                onClick={() => {
+                  setAddError(null);
+                  setAddOpen(false);
+                }}
+                className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateSubscription}
+                className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
-

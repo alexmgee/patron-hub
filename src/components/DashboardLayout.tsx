@@ -6,7 +6,8 @@ import {
     Settings,
     Home,
     RefreshCw,
-    Filter
+    Filter,
+    Plus
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -25,6 +26,7 @@ interface DashboardLayoutProps {
     sortBy?: 'recent' | 'name' | 'cost' | 'new';
     onSortByChange?: (sortBy: 'recent' | 'name' | 'cost' | 'new') => void;
     onSync?: () => Promise<void> | void;
+    onAddSubscription?: () => void;
 }
 
 export default function DashboardLayout(props: DashboardLayoutProps) {
@@ -38,6 +40,7 @@ export default function DashboardLayout(props: DashboardLayoutProps) {
         sortBy: controlledSortBy,
         onSortByChange,
         onSync,
+        onAddSubscription,
     } = props;
 
     const [uncontrolledSearchQuery, setUncontrolledSearchQuery] = useState('');
@@ -106,6 +109,15 @@ export default function DashboardLayout(props: DashboardLayoutProps) {
 
                         {/* Actions */}
                         <div className="flex items-center gap-2">
+                            <button
+                                onClick={onAddSubscription}
+                                className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+                                disabled={!onAddSubscription}
+                                title={onAddSubscription ? 'Add subscription' : 'Add subscription (not available)'}
+                            >
+                                <Plus className="h-4 w-4" />
+                                Add
+                            </button>
                             <button
                                 onClick={handleSync}
                                 disabled={isSyncing}
