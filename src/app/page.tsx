@@ -2,6 +2,8 @@ import DashboardPageClient from '@/components/DashboardPageClient';
 import { getDashboardCreators } from '@/lib/db/queries';
 import type { CreatorCardData } from '@/components/CreatorCard';
 
+export const dynamic = 'force-dynamic';
+
 export default async function Dashboard() {
   const rows = await getDashboardCreators();
 

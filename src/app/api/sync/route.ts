@@ -2,8 +2,14 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { subscriptions, syncLogs } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
+import { getSetting } from '@/lib/db/settings';
 
 export async function POST() {
+  const autoSyncEnabled = await getSetting<boolean>('auto_sync_enabled', true);
+  if (!autoSyncEnabled) {
+    return NextResponse.json({ ok: false, disabled: true, error: 'Auto-sync is disabled in settings.' }, { status: 409 });
+  }
+
   const subs = await db.select({ id: subscriptions.id }).from(subscriptions);
   const now = new Date();
 
@@ -23,4 +29,3 @@ export async function POST() {
 
   return NextResponse.json({ ok: true, subscriptions: subs.length });
 }
-

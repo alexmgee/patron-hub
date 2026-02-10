@@ -154,13 +154,15 @@ function seed(sqlite: Database.Database): void {
       insertDownload.run({ ...d, downloaded_at: now, created_at: now });
     }
 
-    // Store a default archive directory in settings for display (still overridden by env).
-    const insertSetting = sqlite.prepare(
-      `INSERT INTO settings (key, value, updated_at) VALUES (@key, @value, @updated_at)`
-    );
-    insertSetting.run({ key: 'archive_dir', value: JSON.stringify(null), updated_at: now });
-  })();
-}
+	    // Store a default archive directory in settings for display (still overridden by env).
+	    const insertSetting = sqlite.prepare(
+	      `INSERT INTO settings (key, value, updated_at) VALUES (@key, @value, @updated_at)`
+	    );
+	    insertSetting.run({ key: 'archive_dir', value: JSON.stringify(null), updated_at: now });
+	    insertSetting.run({ key: 'auto_sync_enabled', value: JSON.stringify(true), updated_at: now });
+	    insertSetting.run({ key: 'auto_download_enabled', value: JSON.stringify(true), updated_at: now });
+	  })();
+	}
 
 export function bootstrapDb(sqlite: Database.Database): void {
   // Allow opting out in environments where filesystem writes are undesirable.

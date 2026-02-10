@@ -1,6 +1,8 @@
 import CreatorDetailPageClient from '@/components/CreatorDetailPageClient';
 import { getCreatorContentItems, getCreatorDetail } from '@/lib/db/queries';
 
+export const dynamic = 'force-dynamic';
+
 export default async function CreatorPage(props: { params: { id: string } }) {
   const creatorId = Number(props.params.id);
   if (!Number.isFinite(creatorId)) {
@@ -24,4 +26,3 @@ export default async function CreatorPage(props: { params: { id: string } }) {
 
   return <CreatorDetailPageClient creator={creator} items={items} />;
 }
-

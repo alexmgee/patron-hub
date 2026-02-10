@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { creators, subscriptions } from '@/lib/db/schema';
 
@@ -68,7 +68,8 @@ export async function POST(req: Request) {
   const createdSub = await db
     .select({ id: subscriptions.id })
     .from(subscriptions)
-    .where(eq(subscriptions.creatorId, creatorId))
+    .where(and(eq(subscriptions.creatorId, creatorId), eq(subscriptions.platform, platform)))
+    .orderBy(desc(subscriptions.id))
     .limit(1);
 
   return NextResponse.json({ ok: true, creatorId, subscriptionId: createdSub[0]?.id ?? null });

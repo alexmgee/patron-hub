@@ -1,13 +1,34 @@
 import Link from 'next/link';
-import { getArchiveDirectory, getArchiveStats, formatBytes, isArchiveWritable } from '@/lib/archive';
+import { formatBytes, getArchiveStatsForRoot, isArchiveWritable, resolveArchiveDirectory } from '@/lib/archive';
 import { getDataDirectory, getDatabasePath } from '@/lib/db';
+import { getSetting, setSetting } from '@/lib/db/settings';
+
+export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
   const dbPath = getDatabasePath();
   const dataDir = getDataDirectory();
-  const archiveDir = getArchiveDirectory();
-  const writable = isArchiveWritable();
-  const stats = getArchiveStats();
+  const configuredArchiveDir = await getSetting<string | null>('archive_dir', null);
+  const autoSyncEnabled = await getSetting<boolean>('auto_sync_enabled', true);
+  const autoDownloadEnabled = await getSetting<boolean>('auto_download_enabled', true);
+
+  const archiveDir = resolveArchiveDirectory(configuredArchiveDir);
+  const writable = isArchiveWritable(configuredArchiveDir);
+  const stats = getArchiveStatsForRoot(configuredArchiveDir);
+
+  async function updateSettings(formData: FormData) {
+    'use server';
+
+    const archiveDirInput = String(formData.get('archive_dir') ?? '').trim();
+    const archiveDirValue = archiveDirInput.length === 0 ? null : archiveDirInput;
+
+    const autoSync = formData.get('auto_sync_enabled') === 'on';
+    const autoDownload = formData.get('auto_download_enabled') === 'on';
+
+    await setSetting('archive_dir', archiveDirValue);
+    await setSetting('auto_sync_enabled', autoSync);
+    await setSetting('auto_download_enabled', autoDownload);
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -28,6 +49,58 @@ export default async function SettingsPage() {
 
       <main className="mx-auto max-w-4xl px-4 py-8">
         <div className="space-y-6">
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">App Settings</h2>
+                <p className="mt-1 text-sm text-zinc-500">Persisted in SQLite. Env vars still override where noted.</p>
+              </div>
+              <Link
+                href="/import"
+                className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800"
+              >
+                Import JSON
+              </Link>
+            </div>
+
+            <form action={updateSettings} className="mt-4 space-y-4">
+              <label className="block">
+                <div className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Archive directory (optional)</div>
+                <input
+                  name="archive_dir"
+                  defaultValue={configuredArchiveDir ?? ''}
+                  placeholder={archiveDir}
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
+                />
+                <div className="mt-1 text-xs text-zinc-600">
+                  Effective: <span className="font-mono">{archiveDir}</span>
+                </div>
+                {process.env.PATRON_HUB_ARCHIVE_DIR && (
+                  <div className="mt-1 text-xs text-zinc-500">
+                    Env override in effect: <span className="font-mono text-zinc-300">PATRON_HUB_ARCHIVE_DIR</span>
+                  </div>
+                )}
+              </label>
+
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="flex items-center gap-2 text-sm text-zinc-300">
+                  <input type="checkbox" name="auto_sync_enabled" defaultChecked={autoSyncEnabled} />
+                  Auto-sync enabled
+                </label>
+                <label className="flex items-center gap-2 text-sm text-zinc-300">
+                  <input type="checkbox" name="auto_download_enabled" defaultChecked={autoDownloadEnabled} />
+                  Auto-download enabled
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end">
+                <button className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500">
+                  Save
+                </button>
+              </div>
+            </form>
+          </section>
+
           <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400">Storage</h2>
             <div className="space-y-3 text-sm">
@@ -92,4 +165,3 @@ export default async function SettingsPage() {
     </div>
   );
 }
-
