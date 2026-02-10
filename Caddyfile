@@ -1,0 +1,13 @@
+{$PATRON_HUB_DOMAIN} {
+  tls {$PATRON_HUB_EMAIL}
+
+  encode zstd gzip
+
+  # IMPORTANT: The app has no user auth yet. Protect it before exposing to the internet.
+  basicauth {
+    {$PATRON_HUB_BASIC_AUTH_USER} {$PATRON_HUB_BASIC_AUTH_HASH}
+  }
+
+  reverse_proxy patron-hub:3000
+}
+

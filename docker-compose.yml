@@ -2,8 +2,8 @@ services:
   patron-hub:
     build: .
     image: patron-hub:local
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
@@ -13,4 +13,3 @@ services:
       - ./server-data:/data
       - ./server-archive:/archive
     restart: unless-stopped
-

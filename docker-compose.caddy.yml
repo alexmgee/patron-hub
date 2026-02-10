@@ -1,0 +1,23 @@
+services:
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PATRON_HUB_DOMAIN: ${PATRON_HUB_DOMAIN}
+      PATRON_HUB_EMAIL: ${PATRON_HUB_EMAIL}
+      PATRON_HUB_BASIC_AUTH_USER: ${PATRON_HUB_BASIC_AUTH_USER}
+      PATRON_HUB_BASIC_AUTH_HASH: ${PATRON_HUB_BASIC_AUTH_HASH}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - patron-hub
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
+
