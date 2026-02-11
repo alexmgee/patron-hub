@@ -1,9 +1,9 @@
 node_modules
 .next
-data
-archive
-server-data
-server-archive
+/data
+/archive
+/server-data
+/server-archive
 .git
 .DS_Store
 npm-debug.log*
