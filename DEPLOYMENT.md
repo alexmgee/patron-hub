@@ -1,108 +1,79 @@
 # Deployment (Home Server)
 
-Patron Hub is local-first (SQLite + filesystem archive). The simplest "live" deployment is Docker on a machine with persistent disks mounted as volumes.
+Patron Hub is local-first: SQLite + filesystem archive. For your current homelab, the primary target is:
 
-## Ubuntu (Docker Compose)
+- Host: `cloud3-hoard`
+- LAN IP: `192.168.1.10`
+- Tailscale IP: `100.111.109.23`
+- OS: Ubuntu Server 24.04
 
-1. Install Docker + Compose plugin (once):
-   - Follow the official Docker Engine install for Ubuntu.
+## LAN Deployment (Recommended Now)
 
-2. Clone the repo onto the server:
+1. Install Docker + Compose plugin on `cloud3-hoard` (once).
+2. Clone repo on the server:
    - `git clone https://github.com/alexmgee/patron-hub.git`
    - `cd patron-hub`
-
-3. Create persistent storage directories:
+3. Create persistent app directories:
    - `mkdir -p server-data server-archive`
+4. Build and start:
+   - `docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build`
+5. Open Patron Hub:
+   - LAN: `http://192.168.1.10:3000`
+   - Tailscale (if enabled): `http://100.111.109.23:3000`
+6. First-time auth setup:
+   - `http://192.168.1.10:3000/setup`
+   - Then login at `http://192.168.1.10:3000/login`
+7. Optional Patreon sync:
+   - Go to Settings
+   - Paste full authenticated Patreon cookie into `Patreon cookie (for sync)`
+   - Click `Sync` on dashboard
 
-4. Build + run:
-   - LAN (port 3000 open on the server):
-     - `docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build`
-   - Or internal-only (no host ports published):
-     - `docker compose -f docker-compose.yml up -d --build`
+## Where Data Lives
 
-5. Open:
-   - LAN mode: `http://<server-ip>:3000`
+- DB in container: `/data/patron-hub.db`
+- Archive in container: `/archive/...`
+- Host bind mounts:
+  - `./server-data -> /data`
+  - `./server-archive -> /archive`
 
-6. First-time setup:
-   - Visit `http://<server-ip>:3000/setup` to create the first admin user.
-   - Then sign in at `http://<server-ip>:3000/login`.
+You can keep these under the repo folder, or move them onto your NAS-backed paths and update compose volumes.
 
-7. Patreon sync setup (optional):
-   - Open Settings in the app.
-   - Paste your authenticated Patreon cookie in **Patreon cookie (for sync)**.
-   - Save and click **Sync** from the dashboard.
+## Ops Commands
 
-## Public Access (Domain + TLS via Caddy)
+- Start/update: `docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build`
+- Stop: `docker compose -f docker-compose.yml -f docker-compose.lan.yml down`
+- Logs: `docker compose -f docker-compose.yml -f docker-compose.lan.yml logs -f patron-hub`
+- Status: `docker compose -f docker-compose.yml -f docker-compose.lan.yml ps`
 
-This option makes the app reachable from outside your network with a normal domain name and HTTPS.
+## Public Domain Later (Caddy + TLS)
 
-### Prereqs
+When you get a domain, switch to the Caddy overlay.
 
-- Your home router can port-forward to the server
-- You are not behind CGNAT (see check below)
-- You have a domain name with DNS control
-
-### Check For CGNAT (Important)
-
-If your ISP uses CGNAT, port forwarding will not work.
-
-On the Ubuntu server:
-
-- Get public IP: `curl -s https://ifconfig.me`
-- Compare to router WAN IP (in your router UI)
-
-If the router WAN IP is in `10.x`, `192.168.x`, `172.16-31.x`, or `100.64.x`, you're likely behind CGNAT.
-
-If CGNAT: use a tunnel (Cloudflare Tunnel) or a mesh VPN (Tailscale) instead of port forwarding.
-
-### DNS
-
-Create an `A` record:
-
-- `patron.yourdomain.com` -> your home public IP
-
-If your home IP changes, set up a DDNS updater (provider-specific).
-
-### Router Port Forwarding
-
-Forward TCP ports to your Ubuntu server:
-
-- `80` -> `80`
-- `443` -> `443`
-
-### Create an `.env` (not committed)
-
-Copy `.env.example` to `.env` and set:
-
-- `PATRON_HUB_DOMAIN=patron.yourdomain.com`
-- `PATRON_HUB_EMAIL=you@yourdomain.com` (used for Let's Encrypt)
-- `PATRON_HUB_BASIC_AUTH_USER=...`
-- `PATRON_HUB_BASIC_AUTH_HASH=...` (bcrypt hash, not plaintext)
-
-To generate a bcrypt hash:
+1. Create `.env` from `.env.example`
+2. Set:
+   - `PATRON_HUB_DOMAIN=patron.yourdomain.com`
+   - `PATRON_HUB_EMAIL=you@yourdomain.com`
+   - `PATRON_HUB_BASIC_AUTH_USER=...`
+   - `PATRON_HUB_BASIC_AUTH_HASH=...`
+3. Generate bcrypt hash:
 
 ```bash
 docker run --rm caddy:2 caddy hash-password --plaintext 'your-strong-password'
 ```
 
-### Run With Caddy
-
-From the repo directory:
+4. Start public stack:
 
 ```bash
-mkdir -p server-data server-archive
 docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 ```
 
-Open:
+5. Open:
+   - `https://patron.yourdomain.com`
 
-- `https://patron.yourdomain.com`
+## CGNAT Check (For Public Exposure)
 
-## Reverse Proxy (Alternative)
+If your ISP uses CGNAT, router port forwarding will fail.
 
-You can also use Nginx/Traefik/etc. The key requirement is persistent volumes for `/data` and `/archive`.
-
-## Notes
-
-- SQLite will be stored in the mounted data volume at `PATRON_HUB_DATA_DIR` (default in container: `/data`).
-- Archived files will be written to the mounted archive volume at `PATRON_HUB_ARCHIVE_DIR` (default in container: `/archive`).
+- Server public IP: `curl -s https://ifconfig.me`
+- Compare with router WAN IP
+- If WAN IP is private (`10.x`, `192.168.x`, `172.16-31.x`, `100.64.x`), use Cloudflare Tunnel or Tailscale instead.

@@ -50,6 +50,8 @@ UI is functional and DB-backed. Auth is implemented (setup/login/session), and P
 
 For a home server deployment (Docker Compose + persistent volumes), see `DEPLOYMENT.md`.
 
+For a beginner-friendly, homelab-specific walkthrough (visual map, step-by-step ops, glossary), see `HOMELAB_PATRON_HUB_GUIDE.md`.
+
 ## Patreon Sync (MVP)
 
 1. Go to `/settings`

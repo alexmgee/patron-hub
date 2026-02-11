@@ -1,7 +1,7 @@
 # Homelab Documentation
 
-> **Last Updated:** 2025-12-18  
-> **Status:** Active - Synology NAS expanding (4th drive syncing)
+> **Last Updated:** 2026-02-11  
+> **Status:** Active - Synology NAS expanding (4th drive syncing) + Patron Hub LAN deployment documented
 
 ---
 
@@ -14,11 +14,11 @@ graph TB
         Switch[Gigabit Switch]
         
         Router --> Switch
-        Switch --> EliteDesk["EliteDesk 800 G2 Mini<br/>192.168.1.10<br/>(cloud-hoard)"]
-        Switch --> Synology["Synology DS418play<br/>192.168.1.200"]
-        Switch --> Windows["Windows Workstation"]
-        Switch --> Pi4["Raspberry Pi 4<br/>(planned)"]
-        Switch --> Pi5["Raspberry Pi 5<br/>(planned)"]
+        Switch --> EliteDesk["EliteDesk 800 G2 Mini<br/>192.168.1.10<br/>(cloud3-hoard)"]
+        Switch --> Synology["Synology DS418play<br/>192.168.1.200<br/>(cloud)"]
+        Switch --> Windows["Windows Workstation<br/>(bill-gates)"]
+        Switch --> Pi4["Raspberry Pi 4<br/>(mr-pi - active)"]
+        Switch --> LinuxPC["Linux Workstation<br/>(linux/ubuntu - offline)"]
     end
 ```
 
@@ -29,7 +29,7 @@ graph TB
 ### Primary Server: HP EliteDesk 800 G2 Mini
 | Property | Value |
 |----------|-------|
-| **Hostname** | cloud-hoard |
+| **Hostname** | cloud3-hoard |
 | **IP Address** | 192.168.1.10 (static) |
 | **OS** | Ubuntu Server 24.04.3 LTS |
 | **RAM** | 16GB |
@@ -38,7 +38,9 @@ graph TB
 ### NAS: Synology DS418play
 | Property | Value |
 |----------|-------|
+| **Hostname** | cloud |
 | **IP Address** | 192.168.1.200 |
+| **Tailscale IP** | 100.71.252.69 |
 | **Bays** | 4 |
 | **Current Drives** | 4× drives (Drive 4 syncing to storage pool) |
 | **Usable Capacity** | ~25TB (19TB used, 6.3TB free) |
@@ -83,6 +85,7 @@ graph TB
 
 | Service | Host | Port | Status | URL (Local) | URL (Tailscale) |
 |---------|------|------|--------|-------------|-----------------|
+| **Patron Hub** | EliteDesk | 3000 | 🧪 LAN (documented/ready) | `http://192.168.1.10:3000` | `http://100.111.109.23:3000` |
 | **Portainer** | EliteDesk | 9000 | ✅ Running | `http://192.168.1.10:9000` | `http://100.111.109.23:9000` |
 | **Jellyfin** | EliteDesk | 8096 | ✅ Running (HW Transcode) | `http://192.168.1.10:8096` | `http://100.111.109.23:8096` |
 | **FileBrowser** | EliteDesk | 8080 | ✅ Running | `http://192.168.1.10:8080` | `http://100.111.109.23:8080` |
@@ -93,7 +96,7 @@ graph TB
 | **Radarr** (Movies) | EliteDesk | 7878 | ✅ Running | `http://192.168.1.10:7878` | `http://100.111.109.23:7878` |
 | **Prowlarr** | EliteDesk | 9696 | ✅ Running | `http://192.168.1.10:9696` | `http://100.111.109.23:9696` |
 | **Jellyseerr** | EliteDesk | 5055 | ✅ Running | `http://192.168.1.10:5055` | `http://100.111.109.23:5055` |
-| **DSM** | Synology | 5000 | ✅ Running | `http://192.168.1.200:5000` | N/A |
+| **DSM** | Synology | 5000 | ✅ Running | `http://192.168.1.200:5000` | `http://100.71.252.69:5000` |
 | **SSH** | EliteDesk | 22 | ✅ Running | `ssh macgregor@192.168.1.10` | `ssh macgregor@100.111.109.23` |
 
 ### Jellyfin Libraries
@@ -106,10 +109,22 @@ graph TB
 ### Remote Access (Tailscale)
 - **Status:** ✅ Active
 - **Nodes:**
-  - `cloud-hoard` (Server): `100.111.109.23`
+  - `cloud3-hoard` (EliteDesk): `100.111.109.23`
+  - `cloud` (Synology): `100.71.252.69`
   - `ipad163`: `100.118.195.81`
   - `the-macbook-pro-1`: `100.111.104.79`
+  - `bill-gates` (PC Windows): [IP TBD]
+  - `linux` / `ubuntu` (PC Linux): `100.126.217.4` (Offline)
+  - `mr-pi` (Raspberry Pi): `100.109.92.11`
 - **Admin Console:** https://login.tailscale.com/admin/machines
+
+### Patron Hub Notes
+- **Repo:** `https://github.com/alexmgee/patron-hub`
+- **Deployment Docs:** `DEPLOYMENT.md` and `HOMELAB_PATRON_HUB_GUIDE.md`
+- **Compose (LAN):** `docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build`
+- **Storage Paths (host bind mounts):**
+  - `./server-data` → `/data` (SQLite)
+  - `./server-archive` → `/archive` (downloaded files)
 
 ---
 
@@ -124,6 +139,7 @@ graph TB
 - [x] Jellyfin with media libraries configured
 - [x] Media folder reorganization (Movies, TV Shows, Music, Photos)
 - [x] Nautilus sidebar bookmarks for NAS shares
+- [x] Patron Hub deployment runbook + homelab documentation wiring
 
 ### Planned (Future)
 - [ ] Pi-hole on Raspberry Pi 4
