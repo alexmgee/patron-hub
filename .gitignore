@@ -37,8 +37,10 @@ yarn-error.log*
 next-env.d.ts
 
 # Patron Hub - Data & Archive
-data/
-archive/
+/data/
+/archive/
+/server-data/
+/server-archive/
 
 # SQLite
 *.db
