@@ -84,6 +84,8 @@ export const contentItems = sqliteTable('content_items', {
   // Content identification
   externalId: text('external_id'), // Platform's ID for this content
   externalUrl: text('external_url'), // Original URL on platform
+  downloadUrl: text('download_url'), // Direct media/file URL when available
+  fileNameHint: text('file_name_hint'), // Suggested file name for downloader
   
   // Content metadata
   title: text('title').notNull(),

@@ -11,6 +11,7 @@ export default async function SettingsPage() {
   const configuredArchiveDir = await getSetting<string | null>('archive_dir', null);
   const autoSyncEnabled = await getSetting<boolean>('auto_sync_enabled', true);
   const autoDownloadEnabled = await getSetting<boolean>('auto_download_enabled', true);
+  const patreonCookie = await getSetting<string | null>('patreon_cookie', null);
 
   const archiveDir = resolveArchiveDirectory(configuredArchiveDir);
   const writable = isArchiveWritable(configuredArchiveDir);
@@ -24,10 +25,12 @@ export default async function SettingsPage() {
 
     const autoSync = formData.get('auto_sync_enabled') === 'on';
     const autoDownload = formData.get('auto_download_enabled') === 'on';
+    const patreonCookieInput = String(formData.get('patreon_cookie') ?? '').trim();
 
     await setSetting('archive_dir', archiveDirValue);
     await setSetting('auto_sync_enabled', autoSync);
     await setSetting('auto_download_enabled', autoDownload);
+    await setSetting('patreon_cookie', patreonCookieInput.length > 0 ? patreonCookieInput : null);
   }
 
   return (
@@ -92,6 +95,25 @@ export default async function SettingsPage() {
                   Auto-download enabled
                 </label>
               </div>
+
+              <label className="block">
+                <div className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Patreon cookie (for sync)</div>
+                <textarea
+                  name="patreon_cookie"
+                  defaultValue={patreonCookie ?? ''}
+                  rows={3}
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none font-mono"
+                  placeholder="Paste full Cookie header value from an authenticated Patreon browser session"
+                />
+                <div className="mt-1 text-xs text-zinc-600">
+                  Stored in local SQLite settings. You can also set <span className="font-mono">PATRON_HUB_PATREON_COOKIE</span> as an env var.
+                </div>
+                {process.env.PATRON_HUB_PATREON_COOKIE && (
+                  <div className="mt-1 text-xs text-zinc-500">
+                    Env override in effect: <span className="font-mono text-zinc-300">PATRON_HUB_PATREON_COOKIE</span>
+                  </div>
+                )}
+              </label>
 
               <div className="flex items-center justify-end">
                 <button className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500">

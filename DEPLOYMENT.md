@@ -25,6 +25,12 @@ Patron Hub is local-first (SQLite + filesystem archive). The simplest "live" dep
 
 6. First-time setup:
    - Visit `http://<server-ip>:3000/setup` to create the first admin user.
+   - Then sign in at `http://<server-ip>:3000/login`.
+
+7. Patreon sync setup (optional):
+   - Open Settings in the app.
+   - Paste your authenticated Patreon cookie in **Patreon cookie (for sync)**.
+   - Save and click **Sync** from the dashboard.
 
 ## Public Access (Domain + TLS via Caddy)
 

@@ -22,6 +22,13 @@
       "when": 1770751101394,
       "tag": "0002_perfect_red_wolf",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1770779241039,
+      "tag": "0003_groovy_magik",
+      "breakpoints": true
     }
   ]
 }

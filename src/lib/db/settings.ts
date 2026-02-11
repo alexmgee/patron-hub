@@ -5,7 +5,8 @@ import { settings } from './schema';
 export type AppSettingKey =
   | 'archive_dir'
   | 'auto_sync_enabled'
-  | 'auto_download_enabled';
+  | 'auto_download_enabled'
+  | 'patreon_cookie';
 
 export async function getSetting<T>(key: AppSettingKey, fallback: T): Promise<T> {
   const row = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, key)).limit(1);

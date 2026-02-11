@@ -28,6 +28,8 @@ export type ImportPayload = {
       publishedAt?: string | null;
       tags?: string[];
       externalUrl?: string | null;
+      downloadUrl?: string | null;
+      fileNameHint?: string | null;
       isSeen?: boolean;
       isArchived?: boolean;
     }>;
@@ -198,6 +200,8 @@ export async function importFromJson(payload: ImportPayload): Promise<{
         subscriptionId,
         externalId: null,
         externalUrl: item.externalUrl ?? null,
+        downloadUrl: item.downloadUrl ?? null,
+        fileNameHint: item.fileNameHint ?? null,
         title,
         description: item.description ?? null,
         contentType,

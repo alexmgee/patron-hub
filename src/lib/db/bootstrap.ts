@@ -29,6 +29,46 @@ function ensureSubscriptionColumns(sqlite: Database.Database): void {
   }
 }
 
+function ensureContentItemColumns(sqlite: Database.Database): void {
+  if (tableExists(sqlite, 'content_items') && !columnExists(sqlite, 'content_items', 'download_url')) {
+    sqlite.exec(`ALTER TABLE content_items ADD COLUMN download_url text;`);
+  }
+  if (tableExists(sqlite, 'content_items') && !columnExists(sqlite, 'content_items', 'file_name_hint')) {
+    sqlite.exec(`ALTER TABLE content_items ADD COLUMN file_name_hint text;`);
+  }
+}
+
+function ensureAuthTables(sqlite: Database.Database): void {
+  if (!tableExists(sqlite, 'users')) {
+    sqlite.exec(`
+      CREATE TABLE users (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        email text NOT NULL,
+        password_hash text NOT NULL,
+        is_admin integer DEFAULT true NOT NULL,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      );
+      CREATE UNIQUE INDEX users_email_unique ON users (email);
+    `);
+  }
+
+  if (!tableExists(sqlite, 'sessions')) {
+    sqlite.exec(`
+      CREATE TABLE sessions (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        user_id integer NOT NULL,
+        token_hash text NOT NULL,
+        created_at integer NOT NULL,
+        last_seen_at integer NOT NULL,
+        expires_at integer NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE no action ON DELETE cascade
+      );
+      CREATE UNIQUE INDEX sessions_token_hash_unique ON sessions (token_hash);
+    `);
+  }
+}
+
 function getMigrationsDir(): string {
   return path.join(process.cwd(), 'drizzle');
 }
@@ -175,6 +215,7 @@ function seed(sqlite: Database.Database): void {
 	    insertSetting.run({ key: 'archive_dir', value: JSON.stringify(null), updated_at: now });
 	    insertSetting.run({ key: 'auto_sync_enabled', value: JSON.stringify(true), updated_at: now });
 	    insertSetting.run({ key: 'auto_download_enabled', value: JSON.stringify(true), updated_at: now });
+	    insertSetting.run({ key: 'patreon_cookie', value: JSON.stringify(null), updated_at: now });
 	  })();
 	}
 
@@ -192,6 +233,8 @@ export function bootstrapDb(sqlite: Database.Database): void {
 
   // Apply lightweight schema upgrades for existing DBs.
   ensureSubscriptionColumns(sqlite);
+  ensureContentItemColumns(sqlite);
+  ensureAuthTables(sqlite);
 
   // Seed sample data in development (or when explicitly forced).
   if (process.env.NODE_ENV !== 'production' || process.env.PATRON_HUB_FORCE_SEED === '1') {

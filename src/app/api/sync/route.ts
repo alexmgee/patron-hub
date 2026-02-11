@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { subscriptions, syncLogs } from '@/lib/db/schema';
+import { subscriptions } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { getSetting } from '@/lib/db/settings';
 import { getAuthUser } from '@/lib/auth/api';
+import { syncPatreon } from '@/lib/sync/patreon';
 
 export async function POST() {
   const user = await getAuthUser();
@@ -14,25 +15,30 @@ export async function POST() {
     return NextResponse.json({ ok: false, disabled: true, error: 'Auto-sync is disabled in settings.' }, { status: 409 });
   }
 
-  const subs = await db
+  const globalAutoDownloadEnabled = await getSetting<boolean>('auto_download_enabled', true);
+  const patreonCookie =
+    process.env.PATRON_HUB_PATREON_COOKIE || (await getSetting<string | null>('patreon_cookie', null));
+
+  const activeSyncSubs = await db
     .select({ id: subscriptions.id })
     .from(subscriptions)
     .where(and(eq(subscriptions.status, 'active'), eq(subscriptions.syncEnabled, true)));
-  const now = new Date();
 
-  for (const s of subs) {
-    await db.insert(syncLogs).values({
-      subscriptionId: s.id,
-      startedAt: now,
-      completedAt: now,
-      status: 'success',
-      itemsFound: 0,
-      itemsDownloaded: 0,
-      errors: [],
-    });
-
-    await db.update(subscriptions).set({ lastSyncedAt: now }).where(eq(subscriptions.id, s.id));
+  if (!patreonCookie) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'No Patreon cookie configured. Add one in Settings before syncing.',
+        activeSyncSubscriptions: activeSyncSubs.length,
+      },
+      { status: 409 }
+    );
   }
 
-  return NextResponse.json({ ok: true, subscriptions: subs.length });
+  const patreonStats = await syncPatreon({
+    rawCookie: patreonCookie,
+    globalAutoDownloadEnabled,
+  });
+
+  return NextResponse.json({ ok: true, patreon: patreonStats });
 }

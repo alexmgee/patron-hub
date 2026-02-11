@@ -44,8 +44,21 @@ Disable with `PATRON_HUB_SKIP_BOOTSTRAP=1`.
 
 ## Status
 
-UI is functional and now DB-backed. Ingestion/adapters and real downloads are not implemented yet; “Sync” and “Archive” are placeholder endpoints that write to the local DB.
+UI is functional and DB-backed. Auth is implemented (setup/login/session), and Patreon sync is implemented as an MVP. Real downloads work when a direct media URL is available; some content may still fall back to placeholder archive files when no direct URL is present.
 
 ## Deployment
 
 For a home server deployment (Docker Compose + persistent volumes), see `DEPLOYMENT.md`.
+
+## Patreon Sync (MVP)
+
+1. Go to `/settings`
+2. Paste your authenticated Patreon cookie string into **Patreon cookie (for sync)**
+3. Save settings
+4. Click **Sync** on the dashboard
+
+Patreon sync currently:
+- imports memberships/campaign subscriptions
+- imports recent posts into `content_items`
+- stores direct media URLs when available
+- auto-downloads media only when direct URLs are present and auto-download is enabled
