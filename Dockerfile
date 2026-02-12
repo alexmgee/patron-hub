@@ -31,6 +31,8 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.ts ./next.config.ts
+# Runtime DB bootstrap reads SQL migrations from ./drizzle on first start.
+COPY --from=builder /app/drizzle ./drizzle
 
 # App writes to these directories. Mount volumes here in docker-compose.
 ENV PATRON_HUB_DATA_DIR=/data
@@ -38,4 +40,3 @@ ENV PATRON_HUB_ARCHIVE_DIR=/archive
 
 EXPOSE 3000
 CMD ["npm", "start"]
-
