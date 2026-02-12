@@ -64,6 +64,6 @@ For a beginner-friendly, homelab-specific walkthrough (visual map, step-by-step 
 
 Patreon sync currently:
 - imports memberships/campaign subscriptions
-- imports recent posts into `content_items`
+- imports paginated post history into `content_items` (bounded by `PATRON_HUB_PATREON_MAX_PAGES`)
 - stores direct media URLs when available
 - auto-downloads media only when direct URLs are present and auto-download is enabled

@@ -109,6 +109,7 @@ docker compose -f docker-compose.yml -f docker-compose.lan.yml logs -f patron-hu
 3. Paste your full authenticated Patreon cookie string into `Patreon cookie (for sync)`.
 4. Save.
 5. Hit `Sync` on dashboard.
+6. Optional backlog depth tuning: set `PATRON_HUB_PATREON_MAX_PAGES` in `.env` (default `40`).
 
 ## 7. Homelab Hookup Checklist
 

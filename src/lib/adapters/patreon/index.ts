@@ -16,6 +16,9 @@ type JsonApiRef = {
 type JsonApiResponse = {
   data?: JsonApiResource | JsonApiResource[];
   included?: JsonApiResource[];
+  links?: {
+    next?: string | { href?: string | null } | null;
+  };
 };
 
 export type PatreonMembership = {
@@ -75,8 +78,29 @@ function cookieHeader(rawCookie: string): string {
   return `session_id=${trimmed}`;
 }
 
-async function patreonFetchJson(path: string, rawCookie: string): Promise<JsonApiResponse> {
-  const res = await fetch(`https://www.patreon.com${path}`, {
+function isPatreonHost(hostname: string): boolean {
+  return hostname === 'patreon.com' || hostname.endsWith('.patreon.com');
+}
+
+function toPatreonUrl(pathOrUrl: string): string {
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    const parsed = new URL(pathOrUrl);
+    if (!isPatreonHost(parsed.hostname)) {
+      throw new Error(`Refusing non-Patreon next link: ${parsed.hostname}`);
+    }
+    return parsed.toString();
+  }
+
+  if (!pathOrUrl.startsWith('/')) {
+    return `https://www.patreon.com/${pathOrUrl}`;
+  }
+
+  return `https://www.patreon.com${pathOrUrl}`;
+}
+
+async function patreonFetchJson(pathOrUrl: string, rawCookie: string): Promise<JsonApiResponse> {
+  const url = toPatreonUrl(pathOrUrl);
+  const res = await fetch(url, {
     headers: {
       accept: 'application/json',
       cookie: cookieHeader(rawCookie),
@@ -85,7 +109,7 @@ async function patreonFetchJson(path: string, rawCookie: string): Promise<JsonAp
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Patreon request failed (${res.status}) on ${path}: ${body.slice(0, 300)}`);
+    throw new Error(`Patreon request failed (${res.status}) on ${pathOrUrl}: ${body.slice(0, 300)}`);
   }
   return (await res.json()) as JsonApiResponse;
 }
@@ -253,6 +277,33 @@ function parsePosts(payload: JsonApiResponse): PatreonPost[] {
   return results;
 }
 
+function getNextPageLink(payload: JsonApiResponse): string | null {
+  const raw = payload.links?.next;
+  if (!raw) return null;
+  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'object' && raw.href) return raw.href;
+  return null;
+}
+
+function dedupePostsByExternalId(posts: PatreonPost[]): PatreonPost[] {
+  const seen = new Set<string>();
+  const deduped: PatreonPost[] = [];
+  for (const post of posts) {
+    if (seen.has(post.externalId)) continue;
+    seen.add(post.externalId);
+    deduped.push(post);
+  }
+  return deduped;
+}
+
+function getMaxPagesFromEnv(defaultValue = 40): number {
+  const raw = process.env.PATRON_HUB_PATREON_MAX_PAGES;
+  if (!raw) return defaultValue;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return defaultValue;
+  return Math.max(1, Math.trunc(parsed));
+}
+
 export async function fetchPatreonMemberships(rawCookie: string): Promise<PatreonMembership[]> {
   const response = await patreonFetchJson(
     '/api/current_user?include=memberships.campaign.creator,memberships.currently_entitled_tiers&json-api-version=1.0',
@@ -262,7 +313,9 @@ export async function fetchPatreonMemberships(rawCookie: string): Promise<Patreo
 }
 
 export async function fetchPatreonPosts(rawCookie: string, campaignId: string, pageCount = 30): Promise<PatreonPost[]> {
-  const response = await patreonFetchJsonCandidates(
+  const maxPages = getMaxPagesFromEnv();
+
+  let response = await patreonFetchJsonCandidates(
     [
       `/api/posts?filter[campaign_id]=${encodeURIComponent(
         campaignId
@@ -271,6 +324,22 @@ export async function fetchPatreonPosts(rawCookie: string, campaignId: string, p
     ],
     rawCookie
   );
-  return parsePosts(response);
-}
 
+  const allPosts: PatreonPost[] = [];
+  let pagesFetched = 0;
+
+  // Walk paginated history for backlog harvesting, bounded by max pages.
+  while (true) {
+    allPosts.push(...parsePosts(response));
+    pagesFetched += 1;
+
+    if (pagesFetched >= maxPages) break;
+
+    const next = getNextPageLink(response);
+    if (!next) break;
+
+    response = await patreonFetchJson(next, rawCookie);
+  }
+
+  return dedupePostsByExternalId(allPosts);
+}
