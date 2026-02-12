@@ -28,6 +28,9 @@ Patron Hub is local-first: SQLite + filesystem archive. For your current homelab
    - Paste full authenticated Patreon cookie into `Patreon cookie (for sync)`
    - Click `Sync` on dashboard
    - Optional backlog depth tuning: set `PATRON_HUB_PATREON_MAX_PAGES` in `.env` (default `40`)
+   - Optional resolver queue tuning:
+     - `PATRON_HUB_PATREON_HARVEST_JOB_LIMIT` (default `80`)
+     - `PATRON_HUB_PATREON_HARVEST_MAX_ATTEMPTS` (default `8`)
 
 ### Optional: Disable Login For Trusted LAN
 

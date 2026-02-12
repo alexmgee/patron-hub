@@ -66,4 +66,7 @@ Patreon sync currently:
 - imports memberships/campaign subscriptions
 - imports paginated post history into `content_items` (bounded by `PATRON_HUB_PATREON_MAX_PAGES`)
 - stores direct media URLs when available
+- attempts resolver fallback on post API + post HTML when direct URL is missing
+- enqueues unresolved items for retry harvesting in `harvest_jobs`
 - auto-downloads media only when direct URLs are present and auto-download is enabled
+- supports HLS (`.m3u8`) harvesting via `ffmpeg` in Docker deployments

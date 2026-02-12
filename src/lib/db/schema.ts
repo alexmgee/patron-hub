@@ -155,6 +155,26 @@ export const syncLogs = sqliteTable('sync_logs', {
 });
 
 // ============================================================================
+// HARVEST JOBS
+// Retry queue for content enrichment/downloader harvesting tasks.
+// ============================================================================
+export const harvestJobs = sqliteTable('harvest_jobs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  contentItemId: integer('content_item_id').notNull().references(() => contentItems.id, { onDelete: 'cascade' }),
+
+  // e.g. 'download_url_resolve'
+  kind: text('kind').notNull().default('download_url_resolve'),
+  // 'pending' | 'running' | 'done' | 'failed'
+  status: text('status').notNull().default('pending'),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  lastAttemptAt: integer('last_attempt_at', { mode: 'timestamp' }),
+  nextAttemptAt: integer('next_attempt_at', { mode: 'timestamp' }),
+  lastError: text('last_error'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+});
+
+// ============================================================================
 // SETTINGS
 // App configuration stored as key-value pairs
 // ============================================================================
@@ -187,6 +207,9 @@ export type NewDownload = typeof downloads.$inferInsert;
 
 export type SyncLog = typeof syncLogs.$inferSelect;
 export type NewSyncLog = typeof syncLogs.$inferInsert;
+
+export type HarvestJob = typeof harvestJobs.$inferSelect;
+export type NewHarvestJob = typeof harvestJobs.$inferInsert;
 
 export type Setting = typeof settings.$inferSelect;
 export type NewSetting = typeof settings.$inferInsert;

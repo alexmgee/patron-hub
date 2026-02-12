@@ -110,6 +110,9 @@ docker compose -f docker-compose.yml -f docker-compose.lan.yml logs -f patron-hu
 4. Save.
 5. Hit `Sync` on dashboard.
 6. Optional backlog depth tuning: set `PATRON_HUB_PATREON_MAX_PAGES` in `.env` (default `40`).
+7. Optional resolver queue tuning:
+   - `PATRON_HUB_PATREON_HARVEST_JOB_LIMIT` (default `80`)
+   - `PATRON_HUB_PATREON_HARVEST_MAX_ATTEMPTS` (default `8`)
 
 ## 7. Homelab Hookup Checklist
 

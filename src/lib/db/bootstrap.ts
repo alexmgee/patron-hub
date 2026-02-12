@@ -69,6 +69,28 @@ function ensureAuthTables(sqlite: Database.Database): void {
   }
 }
 
+function ensureHarvestTables(sqlite: Database.Database): void {
+  if (!tableExists(sqlite, 'harvest_jobs')) {
+    sqlite.exec(`
+      CREATE TABLE harvest_jobs (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        content_item_id integer NOT NULL,
+        kind text DEFAULT 'download_url_resolve' NOT NULL,
+        status text DEFAULT 'pending' NOT NULL,
+        attempt_count integer DEFAULT 0 NOT NULL,
+        last_attempt_at integer,
+        next_attempt_at integer,
+        last_error text,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL,
+        FOREIGN KEY (content_item_id) REFERENCES content_items(id) ON UPDATE no action ON DELETE cascade
+      );
+      CREATE UNIQUE INDEX harvest_jobs_content_kind_unique ON harvest_jobs (content_item_id, kind);
+      CREATE INDEX harvest_jobs_status_next_attempt_idx ON harvest_jobs (status, next_attempt_at);
+    `);
+  }
+}
+
 function getMigrationsDir(): string {
   return path.join(process.cwd(), 'drizzle');
 }
@@ -235,6 +257,7 @@ export function bootstrapDb(sqlite: Database.Database): void {
   ensureSubscriptionColumns(sqlite);
   ensureContentItemColumns(sqlite);
   ensureAuthTables(sqlite);
+  ensureHarvestTables(sqlite);
 
   // Seed sample data in development (or when explicitly forced).
   if (process.env.NODE_ENV !== 'production' || process.env.PATRON_HUB_FORCE_SEED === '1') {

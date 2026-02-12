@@ -46,6 +46,12 @@ export type PatreonPost = {
   fileNameHint: string | null;
 };
 
+export type PatreonResolvedMedia = {
+  downloadUrl: string | null;
+  fileNameHint: string | null;
+  source: 'api-post' | 'post-html' | 'none';
+};
+
 function includeMap(included: JsonApiResource[] = []): Map<string, JsonApiResource> {
   const map = new Map<string, JsonApiResource>();
   for (const item of included) {
@@ -62,6 +68,13 @@ function asArray<T>(value: T | T[] | null | undefined): T[] {
 
 function pickString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function decodeEscapedJsonString(value: string): string {
+  return value
+    .replace(/\\u002F/gi, '/')
+    .replace(/\\\//g, '/')
+    .replace(/&amp;/g, '&');
 }
 
 function inferStatus(raw: string | null): 'active' | 'paused' | 'cancelled' {
@@ -302,6 +315,177 @@ function getMaxPagesFromEnv(defaultValue = 40): number {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return defaultValue;
   return Math.max(1, Math.trunc(parsed));
+}
+
+function parsePostIdFromUrl(value: string): string | null {
+  const m = value.match(/-(\d+)(?:[/?#]|$)/);
+  return m?.[1] ?? null;
+}
+
+function extractUrlsFromText(input: string): string[] {
+  const decoded = decodeEscapedJsonString(input);
+  const matches = decoded.match(/https?:\/\/[^\s"'<>\\)]+/g) ?? [];
+  return matches;
+}
+
+function extensionFromUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const path = u.pathname.toLowerCase();
+    const m = path.match(/\.([a-z0-9]{2,8})$/);
+    return m?.[1] ?? '';
+  } catch {
+    return '';
+  }
+}
+
+const DOWNLOAD_EXT_PRIORITY = [
+  'm3u8',
+  'mp4',
+  'mkv',
+  'mov',
+  'webm',
+  'm4v',
+  'mp3',
+  'm4a',
+  'wav',
+  'flac',
+  'aac',
+  'pdf',
+  'zip',
+  'rar',
+  '7z',
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'gif',
+] as const;
+
+function scoreDownloadCandidate(url: string): number {
+  const normalized = url.toLowerCase();
+  const ext = extensionFromUrl(normalized);
+  const extRank = DOWNLOAD_EXT_PRIORITY.indexOf(ext as (typeof DOWNLOAD_EXT_PRIORITY)[number]);
+  const base = extRank >= 0 ? 1000 - extRank * 10 : 100;
+
+  let bonus = 0;
+  if (normalized.includes('download')) bonus += 50;
+  if (normalized.includes('attachment')) bonus += 20;
+  if (normalized.includes('media')) bonus += 10;
+  if (normalized.includes('.m3u8')) bonus += 30;
+  if (normalized.includes('.mp4')) bonus += 25;
+  if (normalized.includes('patreonusercontent.com')) bonus += 15;
+
+  return base + bonus;
+}
+
+function isLikelyFileUrl(url: string): boolean {
+  const ext = extensionFromUrl(url);
+  if (DOWNLOAD_EXT_PRIORITY.includes(ext as (typeof DOWNLOAD_EXT_PRIORITY)[number])) return true;
+  const n = url.toLowerCase();
+  return n.includes('/download') || n.includes('/attachment') || n.includes('/media');
+}
+
+function getFileNameHintFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const fileParam = parsed.searchParams.get('filename') || parsed.searchParams.get('file_name');
+    if (fileParam && fileParam.trim().length > 0) return fileParam.trim();
+
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    const last = parts[parts.length - 1];
+    return last && last.length > 0 ? last : null;
+  } catch {
+    return null;
+  }
+}
+
+function pickBestDownloadUrl(candidates: string[]): string | null {
+  const filtered = Array.from(new Set(candidates.map((c) => c.trim()).filter((c) => /^https?:\/\//i.test(c))))
+    .filter((c) => isLikelyFileUrl(c));
+
+  if (filtered.length === 0) return null;
+  filtered.sort((a, b) => scoreDownloadCandidate(b) - scoreDownloadCandidate(a));
+  return filtered[0];
+}
+
+async function fetchPatreonPostDetail(rawCookie: string, postId: string): Promise<PatreonPost | null> {
+  const response = await patreonFetchJsonCandidates(
+    [
+      `/api/posts/${encodeURIComponent(postId)}?include=attachments_media,media,images,audio,file,user&json-api-version=1.0`,
+      `/api/posts/${encodeURIComponent(postId)}?json-api-version=1.0`,
+    ],
+    rawCookie
+  );
+  const parsed = parsePosts(response);
+  return parsed[0] ?? null;
+}
+
+async function fetchPatreonPostHtml(rawCookie: string, postUrl: string): Promise<string> {
+  const target = toPatreonUrl(postUrl);
+  const res = await fetch(target, {
+    headers: {
+      accept: 'text/html,application/xhtml+xml',
+      cookie: cookieHeader(rawCookie),
+      'user-agent': 'PatronHub/0.1 (+self-hosted)',
+    },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Patreon HTML fetch failed (${res.status}) on ${postUrl}: ${body.slice(0, 300)}`);
+  }
+  return res.text();
+}
+
+function extractDownloadCandidatesFromHtml(html: string): string[] {
+  const urls = extractUrlsFromText(html);
+  return urls.filter((u) => !u.endsWith('.js') && !u.endsWith('.css'));
+}
+
+export async function resolvePatreonPostMedia(
+  rawCookie: string,
+  input: { postId?: string | null; postUrl?: string | null }
+): Promise<PatreonResolvedMedia> {
+  const postId = input.postId || (input.postUrl ? parsePostIdFromUrl(input.postUrl) : null);
+
+  // First try API-by-post-id to get structured attachment/media fields.
+  if (postId) {
+    try {
+      const detailed = await fetchPatreonPostDetail(rawCookie, postId);
+      if (detailed?.downloadUrl) {
+        return {
+          downloadUrl: detailed.downloadUrl,
+          fileNameHint: detailed.fileNameHint,
+          source: 'api-post',
+        };
+      }
+    } catch {
+      // best effort; fall through to HTML extraction
+    }
+  }
+
+  // Fallback: parse post HTML for embedded media/file URLs.
+  if (input.postUrl) {
+    try {
+      const html = await fetchPatreonPostHtml(rawCookie, input.postUrl);
+      const best = pickBestDownloadUrl(extractDownloadCandidatesFromHtml(html));
+      if (best) {
+        return {
+          downloadUrl: best,
+          fileNameHint: getFileNameHintFromUrl(best),
+          source: 'post-html',
+        };
+      }
+    } catch {
+      // no-op; return none below
+    }
+  }
+
+  return {
+    downloadUrl: null,
+    fileNameHint: null,
+    source: 'none',
+  };
 }
 
 export async function fetchPatreonMemberships(rawCookie: string): Promise<PatreonMembership[]> {
