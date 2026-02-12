@@ -28,6 +28,16 @@ Patron Hub is local-first: SQLite + filesystem archive. For your current homelab
    - Paste full authenticated Patreon cookie into `Patreon cookie (for sync)`
    - Click `Sync` on dashboard
 
+### Optional: Disable Login For Trusted LAN
+
+If you want to skip setup/login entirely on your private network:
+
+1. Create `.env` in repo root.
+2. Add `PATRON_HUB_DISABLE_AUTH=1`.
+3. Restart compose.
+
+Use this only on trusted LAN/VPN access.
+
 ## Where Data Lives
 
 - DB in container: `/data/patron-hub.db`

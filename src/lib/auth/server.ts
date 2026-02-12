@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { SESSION_COOKIE_NAME } from './constants';
+import { SESSION_COOKIE_NAME, isAuthDisabled } from './constants';
 import { anyUsersExist, getUserBySessionToken, type AuthUser } from './session';
 
 export type AuthState =
@@ -7,6 +7,19 @@ export type AuthState =
   | { needsSetup: false; user: AuthUser | null };
 
 export async function getAuthState(): Promise<AuthState> {
+  if (isAuthDisabled()) {
+    return {
+      needsSetup: false,
+      user: {
+        id: 0,
+        email: 'no-auth@local',
+        isAdmin: true,
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      },
+    };
+  }
+
   const hasUsers = await anyUsersExist();
   if (!hasUsers) return { needsSetup: true, user: null };
 

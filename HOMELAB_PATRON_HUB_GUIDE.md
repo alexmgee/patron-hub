@@ -79,6 +79,11 @@ First-time setup:
 2. Create admin email + password
 3. Login at `/login`
 
+Optional no-login mode (trusted LAN only):
+
+1. Add `PATRON_HUB_DISABLE_AUTH=1` to `.env`.
+2. Restart compose.
+
 ## 5. Daily Operations
 
 From `/Users/agee2/Projects/patron-hub` on server:

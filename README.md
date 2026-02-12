@@ -21,6 +21,8 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 On first run, create an admin user at `http://localhost:3000/setup`.
 
+If you do not want login on a trusted LAN-only setup, set `PATRON_HUB_DISABLE_AUTH=1`.
+
 ### Local storage paths
 
 By default the app stores:
@@ -32,6 +34,7 @@ Override these via environment variables:
 
 - `PATRON_HUB_DATA_DIR`
 - `PATRON_HUB_ARCHIVE_DIR`
+- `PATRON_HUB_DISABLE_AUTH` (`1` disables auth; LAN-only recommended)
 
 ### Dev bootstrap
 

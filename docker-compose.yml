@@ -9,6 +9,7 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
       PATRON_HUB_DATA_DIR: /data
       PATRON_HUB_ARCHIVE_DIR: /archive
+      PATRON_HUB_DISABLE_AUTH: ${PATRON_HUB_DISABLE_AUTH:-0}
     volumes:
       - ./server-data:/data
       - ./server-archive:/archive
