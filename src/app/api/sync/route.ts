@@ -35,10 +35,15 @@ export async function POST() {
     );
   }
 
-  const patreonStats = await syncPatreon({
-    rawCookie: patreonCookie,
-    globalAutoDownloadEnabled,
-  });
+  try {
+    const patreonStats = await syncPatreon({
+      rawCookie: patreonCookie,
+      globalAutoDownloadEnabled,
+    });
 
-  return NextResponse.json({ ok: true, patreon: patreonStats });
+    return NextResponse.json({ ok: true, patreon: patreonStats });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ ok: false, error: `Sync failed: ${message}` }, { status: 500 });
+  }
 }

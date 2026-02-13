@@ -20,6 +20,20 @@ type NewSubscriptionPayload = {
   currency: string;
 };
 
+type SyncApiResponse = {
+  error?: string;
+  patreon?: {
+    membershipsDiscovered?: number;
+    subscriptionsSynced?: number;
+    postsFound?: number;
+    postsInserted?: number;
+    postsUpdated?: number;
+    itemsDownloaded?: number;
+    harvestJobsProcessed?: number;
+    harvestJobsResolved?: number;
+  };
+};
+
 function slugify(input: string): string {
   return input
     .toLowerCase()
@@ -88,27 +102,25 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
       return;
     }
 
-    const data = await res.json().catch(() => null);
+    const bodyText = await res.text().catch(() => '');
+    let data: SyncApiResponse | null = null;
+    if (bodyText) {
+      try {
+        data = JSON.parse(bodyText) as SyncApiResponse;
+      } catch {
+        data = null;
+      }
+    }
     if (!res.ok) {
       const msg =
         (data && typeof data.error === 'string' && data.error) ||
+        (bodyText && !data ? bodyText.slice(0, 300) : null) ||
         `Sync failed (${res.status}).`;
       setSyncError(msg);
       return;
     }
 
-    const patreon = data?.patreon as
-      | {
-          membershipsDiscovered?: number;
-          subscriptionsSynced?: number;
-          postsFound?: number;
-          postsInserted?: number;
-          postsUpdated?: number;
-          itemsDownloaded?: number;
-          harvestJobsProcessed?: number;
-          harvestJobsResolved?: number;
-        }
-      | undefined;
+    const patreon = data?.patreon;
 
     const msg = patreon
       ? `Sync complete: memberships ${patreon.membershipsDiscovered ?? 0}, subscriptions ${
