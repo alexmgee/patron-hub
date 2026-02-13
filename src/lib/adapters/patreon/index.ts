@@ -87,6 +87,13 @@ function inferStatus(raw: string | null): 'active' | 'paused' | 'cancelled' {
 
 function cookieHeader(rawCookie: string): string {
   const trimmed = rawCookie.trim();
+  for (const ch of trimmed) {
+    if (ch.charCodeAt(0) > 255) {
+      throw new Error(
+        'Patreon cookie contains unsupported non-ASCII characters (often caused by truncated copy like “…”). Re-copy the full raw Cookie header value.'
+      );
+    }
+  }
   if (trimmed.includes('=')) return trimmed;
   return `session_id=${trimmed}`;
 }
