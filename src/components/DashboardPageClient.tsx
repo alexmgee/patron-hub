@@ -39,6 +39,8 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
   const [sortBy, setSortBy] = useState<'recent' | 'name' | 'cost' | 'new'>('recent');
   const [addOpen, setAddOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [addForm, setAddForm] = useState<NewSubscriptionPayload>({
     creatorName: '',
     platform: 'patreon',
@@ -77,9 +79,48 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
   }, [creators, filterMode, searchQuery, sortBy]);
 
   const handleSync = async () => {
-    await fetch('/api/sync', { method: 'POST' }).catch(() => {
-      // Keep UX simple: sync is best-effort placeholder until adapters exist.
-    });
+    setSyncMessage(null);
+    setSyncError(null);
+
+    const res = await fetch('/api/sync', { method: 'POST' }).catch(() => null);
+    if (!res) {
+      setSyncError('Sync request failed (network/server unreachable).');
+      return;
+    }
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const msg =
+        (data && typeof data.error === 'string' && data.error) ||
+        `Sync failed (${res.status}).`;
+      setSyncError(msg);
+      return;
+    }
+
+    const patreon = data?.patreon as
+      | {
+          membershipsDiscovered?: number;
+          subscriptionsSynced?: number;
+          postsFound?: number;
+          postsInserted?: number;
+          postsUpdated?: number;
+          itemsDownloaded?: number;
+          harvestJobsProcessed?: number;
+          harvestJobsResolved?: number;
+        }
+      | undefined;
+
+    const msg = patreon
+      ? `Sync complete: memberships ${patreon.membershipsDiscovered ?? 0}, subscriptions ${
+          patreon.subscriptionsSynced ?? 0
+        }, posts ${patreon.postsFound ?? 0}, inserted ${patreon.postsInserted ?? 0}, updated ${
+          patreon.postsUpdated ?? 0
+        }, downloaded ${patreon.itemsDownloaded ?? 0}, harvest-jobs ${patreon.harvestJobsProcessed ?? 0}/${
+          patreon.harvestJobsResolved ?? 0
+        }.`
+      : 'Sync complete.';
+
+    setSyncMessage(msg);
   };
 
   const handleCreateSubscription = async () => {
@@ -123,6 +164,18 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
       onSync={handleSync}
       onAddSubscription={() => setAddOpen(true)}
     >
+      {syncError && (
+        <div className="mb-4 rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+          {syncError}
+        </div>
+      )}
+
+      {syncMessage && (
+        <div className="mb-4 rounded-lg border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
+          {syncMessage}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filteredCreators.map((creator) => (
           <CreatorCard
