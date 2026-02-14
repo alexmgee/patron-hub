@@ -472,8 +472,9 @@ export async function syncPatreon(opts: SyncOptions): Promise<SyncStats> {
           if (inserted) stats.harvestJobsQueued += 1;
         }
 
-        const effectiveDownloadUrl = resolvedDownloadUrl ?? existingByExternalId[0]?.existingDownloadUrl ?? null;
-        if (contentItemId && opts.globalAutoDownloadEnabled && sub.autoDownloadEnabled && effectiveDownloadUrl) {
+        // Archive to local disk when auto-download is enabled.
+        // If there is no direct download URL, `archiveContentItem` will create a viewable HTML snapshot instead.
+        if (contentItemId && opts.globalAutoDownloadEnabled && sub.autoDownloadEnabled) {
           try {
             const result = await archiveContentItem(contentItemId);
             if (result.downloaded) {
