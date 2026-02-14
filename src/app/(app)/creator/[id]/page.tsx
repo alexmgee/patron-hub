@@ -1,11 +1,13 @@
 import CreatorDetailPageClient from '@/components/CreatorDetailPageClient';
-import { getCreatorContentItems, getCreatorDetail } from '@/lib/db/queries';
+import { getCreatorContentItems, getCreatorDetail, getCreatorIdBySlug } from '@/lib/db/queries';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CreatorPage(props: { params: { id: string } }) {
-  const creatorId = Number(props.params.id);
-  if (!Number.isFinite(creatorId)) {
+  const raw = props.params.id;
+  const numeric = Number(raw);
+  const creatorId = Number.isFinite(numeric) ? numeric : await getCreatorIdBySlug(raw);
+  if (!creatorId) {
     return (
       <div className="min-h-screen bg-zinc-950 p-8 text-zinc-100">
         <h1 className="text-xl font-semibold">Invalid creator id</h1>

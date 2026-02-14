@@ -193,7 +193,7 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
           <CreatorCard
             key={`${creator.platform}:${creator.creatorId}`}
             creator={creator}
-            onClick={() => router.push(`/creator/${creator.creatorId}`)}
+            onClick={() => router.push(`/creator/${encodeURIComponent(String(creator.creatorId))}`)}
           />
         ))}
       </div>

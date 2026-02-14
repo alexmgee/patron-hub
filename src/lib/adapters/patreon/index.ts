@@ -347,7 +347,11 @@ function extractCampaignIdsFromHtml(html: string): string[] {
   return Array.from(ids).slice(0, 200);
 }
 
-async function fetchCampaignAsMembership(rawCookie: string, campaignId: string): Promise<PatreonMembership | null> {
+async function fetchCampaignAsMembership(
+  rawCookie: string,
+  campaignId: string,
+  override?: { tierName?: string; costCents?: number; currency?: string } | null
+): Promise<PatreonMembership | null> {
   const response = await patreonFetchJsonCandidates(
     [
       `/api/campaigns/${encodeURIComponent(campaignId)}?include=creator&json-api-version=1.0`,
@@ -373,28 +377,74 @@ async function fetchCampaignAsMembership(rawCookie: string, campaignId: string):
   const profileUrl = pickString(campaign.attributes?.url) || pickString(creator?.attributes?.url);
   const creatorAvatarUrl = pickString(creator?.attributes?.image_url) || pickString(campaign.attributes?.image_url);
 
+  // best-effort overrides (HTML fallback can include the amount/tier you actually pay)
+  const overrideTierName = pickString((override?.tierName as unknown) ?? null);
+  const overrideCostCents = typeof override?.costCents === 'number' ? override.costCents : null;
+  const overrideCurrency = pickString(override?.currency ?? null);
+
   return {
     campaignId,
     creatorName,
     creatorAvatarUrl,
     campaignName,
     profileUrl,
-    tierName: null,
-    costCents: 0,
-    currency: pickString((campaign.attributes?.currency as unknown) ?? null) || 'USD',
+    tierName: overrideTierName,
+    costCents: overrideCostCents ?? 0,
+    currency: overrideCurrency || pickString((campaign.attributes?.currency as unknown) ?? null) || 'USD',
     status: 'active',
     memberSinceIso: null,
   };
 }
 
+function extractMembershipOverridesFromHtml(html: string): Map<string, { tierName?: string; costCents?: number; currency?: string }> {
+  const decoded = decodeEscapedJsonString(html);
+  const out = new Map<string, { tierName?: string; costCents?: number; currency?: string }>();
+
+  // Look for a campaign_id and then nearby membership pricing fields.
+  const campaignRe = /"campaign_id"\s*:\s*(\d+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = campaignRe.exec(decoded))) {
+    const campaignId = m[1];
+    const window = decoded.slice(m.index, m.index + 1200);
+
+    const amt = window.match(/"currently_entitled_amount_cents"\s*:\s*(\d+)/);
+    const cur = window.match(/"currency"\s*:\s*"([A-Z]{3})"/);
+    const tierA = window.match(/"tier_title"\s*:\s*"([^"]{1,120})"/);
+    const tierB = window.match(/"currently_entitled_tiers"[\s\S]{0,300}?"title"\s*:\s*"([^"]{1,120})"/);
+
+    const costCents = amt ? Number(amt[1]) : undefined;
+    const currency = cur ? cur[1] : undefined;
+    const tierName = tierA?.[1] ?? tierB?.[1] ?? undefined;
+
+    // Merge: prefer non-zero cost and non-empty tier.
+    const existing = out.get(campaignId) ?? {};
+    out.set(campaignId, {
+      costCents: (existing.costCents && existing.costCents > 0 ? existing.costCents : undefined) ?? (costCents && costCents > 0 ? costCents : undefined),
+      currency: existing.currency ?? currency,
+      tierName: existing.tierName ?? tierName,
+    });
+  }
+
+  return out;
+}
+
 async function fetchPatreonMembershipsViaHtml(rawCookie: string): Promise<PatreonMembership[]> {
   const pages = ['/memberships', '/home', '/settings/memberships'];
   const campaignIds = new Set<string>();
+  const overrides = new Map<string, { tierName?: string; costCents?: number; currency?: string }>();
 
   for (const p of pages) {
     try {
       const html = await patreonFetchHtml(p, rawCookie);
       for (const id of extractCampaignIdsFromHtml(html)) campaignIds.add(id);
+      for (const [cid, ov] of extractMembershipOverridesFromHtml(html)) {
+        const existing = overrides.get(cid) ?? {};
+        overrides.set(cid, {
+          costCents: existing.costCents ?? ov.costCents,
+          currency: existing.currency ?? ov.currency,
+          tierName: existing.tierName ?? ov.tierName,
+        });
+      }
     } catch {
       // best-effort
     }
@@ -403,7 +453,7 @@ async function fetchPatreonMembershipsViaHtml(rawCookie: string): Promise<Patreo
   const results: PatreonMembership[] = [];
   for (const id of Array.from(campaignIds)) {
     try {
-      const m = await fetchCampaignAsMembership(rawCookie, id);
+      const m = await fetchCampaignAsMembership(rawCookie, id, overrides.get(id) ?? null);
       if (m) results.push(m);
     } catch {
       // ignore individual failures

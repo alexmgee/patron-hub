@@ -161,7 +161,9 @@ export default function DashboardLayout(props: DashboardLayoutProps) {
                         <div className="flex items-center gap-2">
                             <span className="text-zinc-500">Monthly</span>
                             <span className="font-medium text-emerald-400">
-                                ${(defaultStats.monthlySpend / 100).toFixed(2)}
+                                {defaultStats.monthlySpend === 0 && defaultStats.subscriptionCount > 0
+                                    ? '$—'
+                                    : `$${(defaultStats.monthlySpend / 100).toFixed(2)}`}
                             </span>
                         </div>
                         <div className="flex items-center gap-2">

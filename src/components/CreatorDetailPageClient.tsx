@@ -140,8 +140,8 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
               <div>
                 <h1 className="text-xl font-semibold">{creator.name}</h1>
                 <p className="text-sm text-zinc-400">
-                  <span className="text-orange-400">{platformLabel[creator.platform]}</span> • {creator.tierName ?? 'Subscription'} • $
-                  {(creator.costCents / 100).toFixed(2)}/mo
+                  <span className="text-orange-400">{platformLabel[creator.platform]}</span> • {creator.tierName ?? 'Subscription'} •{' '}
+                  {creator.costCents > 0 ? `$${(creator.costCents / 100).toFixed(2)}/mo` : '$—/mo'}
                 </p>
               </div>
             </div>

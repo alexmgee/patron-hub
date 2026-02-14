@@ -55,7 +55,8 @@ export default function CreatorCard({ creator, onClick }: CreatorCardProps) {
     const hasNewItems = creator.newItemCount > 0;
 
     // Format cost
-    const monthlyCost = (creator.costCents / 100).toFixed(2);
+    const hasKnownCost = creator.costCents > 0;
+    const monthlyCost = hasKnownCost ? (creator.costCents / 100).toFixed(2) : null;
 
     // Format last post date
     const lastPostText = creator.lastPostDateIso
@@ -119,7 +120,7 @@ export default function CreatorCard({ creator, onClick }: CreatorCardProps) {
             <div className="mb-3 flex items-center justify-between text-sm">
                 <span className="text-zinc-400">{creator.totalItems} items</span>
                 <span className="font-medium text-emerald-400">
-                    ${monthlyCost}/mo
+                    {monthlyCost ? `$${monthlyCost}/mo` : '$—/mo'}
                 </span>
             </div>
 
