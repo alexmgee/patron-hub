@@ -63,6 +63,9 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
   const [searchQuery, setSearchQuery] = useState('');
   const [syncEnabled, setSyncEnabled] = useState<boolean>(creator.syncEnabled);
   const [autoDownloadEnabled, setAutoDownloadEnabled] = useState<boolean>(creator.autoDownloadEnabled);
+  const [tierName, setTierName] = useState<string>(creator.tierName ?? '');
+  const [costDollars, setCostDollars] = useState<string>(creator.costCents > 0 ? (creator.costCents / 100).toFixed(2) : '');
+  const [currency, setCurrency] = useState<string>(creator.currency || 'USD');
   const [savingSubSettings, setSavingSubSettings] = useState(false);
   const [subSettingsError, setSubSettingsError] = useState<string | null>(null);
 
@@ -113,7 +116,13 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
     window.location.reload();
   };
 
-  const updateSubscriptionSettings = async (updates: { syncEnabled?: boolean; autoDownloadEnabled?: boolean }) => {
+  const updateSubscriptionSettings = async (updates: {
+    syncEnabled?: boolean;
+    autoDownloadEnabled?: boolean;
+    tierName?: string | null;
+    costCents?: number | null;
+    currency?: string | null;
+  }) => {
     setSavingSubSettings(true);
     setSubSettingsError(null);
     const res = await fetch(`/api/subscriptions/${creator.subscriptionId}/settings`, {
@@ -128,6 +137,19 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
     }
 
     setSavingSubSettings(false);
+  };
+
+  const savePricing = async () => {
+    const cost = costDollars.trim();
+    const parsed = cost.length === 0 ? null : Number(cost);
+    const nextCents =
+      parsed === null || !Number.isFinite(parsed) ? null : Math.max(0, Math.trunc(parsed * 100));
+    await updateSubscriptionSettings({
+      tierName: tierName.trim().length ? tierName.trim() : null,
+      costCents: nextCents,
+      currency: currency.trim().length ? currency.trim().toUpperCase() : null,
+    });
+    window.location.reload();
   };
 
   return (
@@ -315,6 +337,44 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
                     className="rounded"
                   />
                 </label>
+
+                <div className="pt-2">
+                  <div className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Pricing (manual)</div>
+                  <div className="space-y-2">
+                    <input
+                      value={tierName}
+                      onChange={(e) => setTierName(e.target.value)}
+                      placeholder="Tier name (optional)"
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        value={costDollars}
+                        onChange={(e) => setCostDollars(e.target.value)}
+                        placeholder="Monthly cost (e.g. 5.00)"
+                        inputMode="decimal"
+                        className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
+                      />
+                      <input
+                        value={currency}
+                        onChange={(e) => setCurrency(e.target.value)}
+                        placeholder="USD"
+                        className="w-24 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      disabled={savingSubSettings}
+                      onClick={savePricing}
+                      className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+                    >
+                      Save pricing
+                    </button>
+                    <div className="text-xs text-zinc-600">
+                      Patreon isn’t exposing your paid tier/amount via the API for this account, so pricing must be set manually for now.
+                    </div>
+                  </div>
+                </div>
+
                 {subSettingsError && <div className="text-xs text-red-300">{subSettingsError}</div>}
                 {savingSubSettings && <div className="text-xs text-zinc-500">Saving…</div>}
               </div>
