@@ -125,6 +125,8 @@ async function patreonFetchJson(pathOrUrl: string, rawCookie: string): Promise<J
       accept: 'application/json',
       cookie: cookieHeader(rawCookie),
       'user-agent': 'PatronHub/0.1 (+self-hosted)',
+      'x-requested-with': 'XMLHttpRequest',
+      referer: 'https://www.patreon.com/home',
     },
   });
   if (!res.ok) {
@@ -176,6 +178,16 @@ function parseMemberships(payload: JsonApiResponse): PatreonMembership[] {
   }
 
   function getMembershipResources(): JsonApiResource[] {
+    // Some responses embed membership resources directly in the relationship data.
+    const embedded = asArray(root?.relationships?.memberships?.data as unknown as JsonApiResource | JsonApiResource[] | undefined).filter(
+      (r) => typeof r === 'object' && r && (Object.prototype.hasOwnProperty.call(r, 'attributes') || Object.prototype.hasOwnProperty.call(r, 'relationships'))
+    ) as JsonApiResource[];
+    const embeddedWithCampaign = embedded.filter((r) => {
+      const campaignRef = r.relationships?.campaign?.data as JsonApiRef | undefined;
+      return Boolean(campaignRef?.id && campaignRef.type);
+    });
+    if (embeddedWithCampaign.length > 0) return embeddedWithCampaign;
+
     // Primary path: current_user.relationships.memberships.data -> included resources.
     const fromRefs: JsonApiResource[] = [];
     for (const ref of membershipRefs) {
@@ -262,6 +274,29 @@ function parseMemberships(payload: JsonApiResponse): PatreonMembership[] {
   }
 
   return results;
+}
+
+function buildMembershipFetchCandidates(ref: JsonApiRef): string[] {
+  const type = (ref.type ?? '').trim();
+  const id = (ref.id ?? '').trim();
+  if (!type || !id) return [];
+
+  const encodedId = encodeURIComponent(id);
+  const include = 'campaign.creator,currently_entitled_tiers';
+
+  // crude pluralization, good enough for our observed resource types (`member` -> `members`)
+  const plural = type.endsWith('s') ? `${type}es` : `${type}s`;
+
+  const candidates = [
+    `/api/${type}/${encodedId}?include=${include}&json-api-version=1.0`,
+    `/api/${plural}/${encodedId}?include=${include}&json-api-version=1.0`,
+  ];
+
+  if (type === 'member') {
+    candidates.unshift(`/api/members/${encodedId}?include=${include}&json-api-version=1.0`);
+  }
+
+  return candidates;
 }
 
 function findRelatedResources(post: JsonApiResource, map: Map<string, JsonApiResource>): JsonApiResource[] {
@@ -554,12 +589,39 @@ export async function fetchPatreonMemberships(rawCookie: string): Promise<Patreo
     [
       '/api/current_user?include=memberships.campaign.creator,memberships.currently_entitled_tiers&json-api-version=1.0',
       '/api/current_user?include=memberships&json-api-version=1.0',
-      // Fallback endpoint (shape varies; parseMemberships is defensive).
-      '/api/memberships?include=campaign.creator,currently_entitled_tiers&json-api-version=1.0',
     ],
     rawCookie
   );
-  return parseMemberships(response);
+
+  const direct = parseMemberships(response);
+  if (direct.length > 0) return direct;
+
+  // Patreon sometimes returns only membership *refs* with no `included` objects.
+  // In that case, fetch each membership resource by id.
+  const root = Array.isArray(response.data) ? response.data[0] : response.data;
+  const membershipRefs = asArray(root?.relationships?.memberships?.data as JsonApiRef | JsonApiRef[] | undefined);
+
+  const fetched: PatreonMembership[] = [];
+  for (const ref of membershipRefs) {
+    if (!ref?.type || !ref?.id) continue;
+    try {
+      const memberPayload = await patreonFetchJsonCandidates(buildMembershipFetchCandidates(ref), rawCookie);
+      fetched.push(...parseMemberships(memberPayload));
+    } catch {
+      // best-effort
+    }
+  }
+
+  const seen = new Set<string>();
+  const deduped: PatreonMembership[] = [];
+  for (const m of [...direct, ...fetched]) {
+    if (!m.campaignId) continue;
+    if (seen.has(m.campaignId)) continue;
+    seen.add(m.campaignId);
+    deduped.push(m);
+  }
+
+  return deduped;
 }
 
 export async function fetchPatreonPosts(rawCookie: string, campaignId: string, pageCount = 30): Promise<PatreonPost[]> {
