@@ -5,7 +5,14 @@ type JsonApiResource = {
   id?: string;
   type?: string;
   attributes?: Record<string, unknown>;
-  relationships?: Record<string, { data?: JsonApiRef | JsonApiRef[] | null }>;
+  relationships?: Record<
+    string,
+    {
+      data?: JsonApiRef | JsonApiRef[] | JsonApiResource | JsonApiResource[] | null;
+      links?: Record<string, unknown>;
+      meta?: Record<string, unknown>;
+    }
+  >;
 };
 
 type JsonApiRef = {
@@ -146,6 +153,23 @@ async function patreonFetchJsonCandidates(paths: string[], rawCookie: string): P
     }
   }
   throw lastError ?? new Error('Patreon request failed');
+}
+
+async function patreonFetchHtml(pathOrUrl: string, rawCookie: string): Promise<string> {
+  const url = toPatreonUrl(pathOrUrl);
+  const res = await fetch(url, {
+    headers: {
+      accept: 'text/html,application/xhtml+xml',
+      cookie: cookieHeader(rawCookie),
+      'user-agent': 'PatronHub/0.1 (+self-hosted)',
+      referer: 'https://www.patreon.com/home',
+    },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Patreon HTML request failed (${res.status}) on ${pathOrUrl}: ${body.slice(0, 300)}`);
+  }
+  return res.text();
 }
 
 function parseMemberships(payload: JsonApiResponse): PatreonMembership[] {
@@ -310,6 +334,83 @@ function findRelatedResources(post: JsonApiResource, map: Map<string, JsonApiRes
     }
   }
   return resources;
+}
+
+function extractCampaignIdsFromHtml(html: string): string[] {
+  const ids = new Set<string>();
+
+  for (const m of html.matchAll(/\/api\/campaigns\/(\d+)/g)) ids.add(m[1]);
+  for (const m of html.matchAll(/"campaign_id"\s*:\s*(\d+)/g)) ids.add(m[1]);
+  for (const m of html.matchAll(/campaign_id=(\d+)/g)) ids.add(m[1]);
+  for (const m of html.matchAll(/"campaign"\s*:\s*\{\s*"data"\s*:\s*\{\s*"id"\s*:\s*"(\d+)"/g)) ids.add(m[1]);
+
+  return Array.from(ids).slice(0, 200);
+}
+
+async function fetchCampaignAsMembership(rawCookie: string, campaignId: string): Promise<PatreonMembership | null> {
+  const response = await patreonFetchJsonCandidates(
+    [
+      `/api/campaigns/${encodeURIComponent(campaignId)}?include=creator&json-api-version=1.0`,
+      `/api/campaigns/${encodeURIComponent(campaignId)}?json-api-version=1.0`,
+    ],
+    rawCookie
+  );
+
+  const campaign = Array.isArray(response.data) ? response.data[0] : response.data;
+  if (!campaign) return null;
+
+  const map = includeMap(response.included);
+  const creatorRef = campaign.relationships?.creator?.data as JsonApiRef | undefined;
+  const creator = creatorRef?.id && creatorRef.type ? map.get(`${creatorRef.type}:${creatorRef.id}`) : null;
+
+  const creatorName =
+    pickString(creator?.attributes?.full_name) ||
+    pickString(campaign.attributes?.creator_name) ||
+    pickString(campaign.attributes?.name) ||
+    `Patreon Campaign ${campaignId}`;
+
+  const campaignName = pickString(campaign.attributes?.creation_name) || pickString(campaign.attributes?.name) || creatorName;
+  const profileUrl = pickString(campaign.attributes?.url) || pickString(creator?.attributes?.url);
+  const creatorAvatarUrl = pickString(creator?.attributes?.image_url) || pickString(campaign.attributes?.image_url);
+
+  return {
+    campaignId,
+    creatorName,
+    creatorAvatarUrl,
+    campaignName,
+    profileUrl,
+    tierName: null,
+    costCents: 0,
+    currency: pickString((campaign.attributes?.currency as unknown) ?? null) || 'USD',
+    status: 'active',
+    memberSinceIso: null,
+  };
+}
+
+async function fetchPatreonMembershipsViaHtml(rawCookie: string): Promise<PatreonMembership[]> {
+  const pages = ['/memberships', '/home', '/settings/memberships'];
+  const campaignIds = new Set<string>();
+
+  for (const p of pages) {
+    try {
+      const html = await patreonFetchHtml(p, rawCookie);
+      for (const id of extractCampaignIdsFromHtml(html)) campaignIds.add(id);
+    } catch {
+      // best-effort
+    }
+  }
+
+  const results: PatreonMembership[] = [];
+  for (const id of Array.from(campaignIds)) {
+    try {
+      const m = await fetchCampaignAsMembership(rawCookie, id);
+      if (m) results.push(m);
+    } catch {
+      // ignore individual failures
+    }
+  }
+
+  return results;
 }
 
 function extractMediaUrl(resources: JsonApiResource[], post: JsonApiResource): { downloadUrl: string | null; fileNameHint: string | null } {
@@ -610,6 +711,11 @@ export async function fetchPatreonMemberships(rawCookie: string): Promise<Patreo
     } catch {
       // best-effort
     }
+  }
+
+  if (fetched.length === 0) {
+    const htmlFallback = await fetchPatreonMembershipsViaHtml(rawCookie);
+    if (htmlFallback.length > 0) return htmlFallback;
   }
 
   const seen = new Set<string>();
