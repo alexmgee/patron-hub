@@ -54,6 +54,52 @@ function isInlineExtension(fileName: string): boolean {
   );
 }
 
+function sniffMimeTypeFromDisk(absPath: string): string | null {
+  // Very small magic-byte sniffing. This is intentionally conservative.
+  // If we can't confidently identify a previewable type, we fall back to download.
+  try {
+    const fd = fs.openSync(absPath, 'r');
+    const buf = Buffer.alloc(512);
+    const read = fs.readSync(fd, buf, 0, buf.length, 0);
+    fs.closeSync(fd);
+    const b = buf.subarray(0, read);
+
+    const startsWith = (hex: string) => b.length >= hex.length / 2 && b.subarray(0, hex.length / 2).equals(Buffer.from(hex, 'hex'));
+
+    // PDF: "%PDF-"
+    if (b.length >= 5 && b.subarray(0, 5).toString('ascii') === '%PDF-') return 'application/pdf';
+    // PNG
+    if (startsWith('89504e470d0a1a0a')) return 'image/png';
+    // JPEG
+    if (startsWith('ffd8ff')) return 'image/jpeg';
+    // GIF
+    if (b.length >= 6) {
+      const sig = b.subarray(0, 6).toString('ascii');
+      if (sig === 'GIF87a' || sig === 'GIF89a') return 'image/gif';
+    }
+    // WEBP: "RIFF....WEBP"
+    if (b.length >= 12 && b.subarray(0, 4).toString('ascii') === 'RIFF' && b.subarray(8, 12).toString('ascii') === 'WEBP') {
+      return 'image/webp';
+    }
+    // ZIP: "PK\x03\x04" or empty archive variants.
+    if (startsWith('504b0304') || startsWith('504b0506') || startsWith('504b0708')) return 'application/zip';
+    // WAV: "RIFF....WAVE"
+    if (b.length >= 12 && b.subarray(0, 4).toString('ascii') === 'RIFF' && b.subarray(8, 12).toString('ascii') === 'WAVE') {
+      return 'audio/wav';
+    }
+    // MP3: "ID3" or frame sync 0xFFEx
+    if (b.length >= 3 && b.subarray(0, 3).toString('ascii') === 'ID3') return 'audio/mpeg';
+    if (b.length >= 2 && b[0] === 0xff && (b[1] & 0xe0) === 0xe0) return 'audio/mpeg';
+    // MP4/M4A: "....ftyp"
+    if (b.length >= 12 && b.subarray(4, 8).toString('ascii') === 'ftyp') return 'video/mp4';
+    // WebM/Matroska: 1A 45 DF A3
+    if (startsWith('1a45dfa3')) return 'video/webm';
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 function parseRange(rangeHeader: string | null, size: number): { start: number; end: number } | null {
   if (!rangeHeader) return null;
   const m = rangeHeader.match(/^bytes=(\d*)-(\d*)$/);
@@ -139,7 +185,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const url = new URL(req.url);
   const requested = url.searchParams.get('disposition'); // 'inline' | 'attachment'
-  const inferredInline = isInlineMime(row[0].mimeType || null) || isInlineExtension(row[0].fileName || '');
+  const rowMime = (row[0].mimeType || '').split(';')[0].trim();
+  const sniffed = !rowMime || rowMime === 'application/octet-stream' ? sniffMimeTypeFromDisk(absPath) : null;
+  const effectiveMime = rowMime || sniffed || '';
+  const inferredInline = isInlineMime(effectiveMime || null) || isInlineExtension(row[0].fileName || '');
   const disposition = requested === 'inline' || requested === 'attachment' ? requested : inferredInline ? 'inline' : null;
 
   const accept = req.headers.get('accept') || '';
@@ -180,7 +229,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       <p style="margin-top: 10px;">Tip: if you set up an SMB share for the archive folder, you can open these files directly from Finder without using the browser download button.</p>
       <pre><code>${[
         `fileName: ${row[0].fileName || ''}`,
-        `mimeType: ${row[0].mimeType || ''}`,
+        `mimeType(db): ${row[0].mimeType || ''}`,
+        `mimeType(sniffed): ${sniffed || ''}`,
         `size: ${bytesToHuman(stat.size)} (${stat.size} bytes)`,
         `archiveRoot: ${archiveRootText}`,
         `archiveRelativePath: ${row[0].localPath}`,
@@ -217,7 +267,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const finalDisposition = disposition ?? 'attachment';
 
   const headers = new Headers();
-  headers.set('content-type', row[0].mimeType || 'application/octet-stream');
+  headers.set('content-type', effectiveMime || 'application/octet-stream');
   headers.set('accept-ranges', 'bytes');
   headers.set('content-disposition', contentDisposition(finalDisposition, row[0].fileName || 'download'));
   headers.set('cache-control', 'private, no-cache, no-store, max-age=0, must-revalidate');
