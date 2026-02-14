@@ -3,6 +3,64 @@ import path from 'path';
 import { execFileSync } from 'child_process';
 import { sanitizeFileName } from '@/lib/archive';
 
+function normalizeCookieHeader(raw: string): string {
+  const trimmed = raw.trim();
+  for (const ch of trimmed) {
+    if (ch.charCodeAt(0) > 255) {
+      throw new Error(
+        'Cookie contains unsupported non-ASCII characters (often caused by truncated copy like “…”). Re-copy the full raw Cookie header value.'
+      );
+    }
+  }
+  if (trimmed.includes('=')) return trimmed;
+  // Some people paste only session_id. Accept it.
+  return `session_id=${trimmed}`;
+}
+
+function isPatreonHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return (
+    h === 'patreon.com' ||
+    h.endsWith('.patreon.com') ||
+    h === 'patreonusercontent.com' ||
+    h.endsWith('.patreonusercontent.com')
+  );
+}
+
+async function fetchWithSafeRedirects(params: {
+  url: string;
+  cookie?: string | null;
+  referer?: string | null;
+  accept?: string | null;
+}): Promise<Response> {
+  const maxRedirects = 10;
+  let current = params.url;
+  const cookie = params.cookie ? normalizeCookieHeader(params.cookie) : null;
+
+  for (let i = 0; i < maxRedirects; i += 1) {
+    const parsed = new URL(current);
+    const headers: Record<string, string> = {
+      'user-agent': 'PatronHub/0.1 (+self-hosted)',
+    };
+    if (params.accept) headers.accept = params.accept;
+    if (params.referer) headers.referer = params.referer;
+
+    // Only send cookies to Patreon-controlled domains (avoid leaking to S3/CloudFront/etc on redirect).
+    if (cookie && isPatreonHost(parsed.hostname)) headers.cookie = cookie;
+
+    const res = await fetch(current, { redirect: 'manual', headers });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      if (!location) return res;
+      current = new URL(location, current).toString();
+      continue;
+    }
+    return res;
+  }
+
+  throw new Error(`Too many redirects while downloading: ${params.url}`);
+}
+
 const MIME_EXTENSIONS: Record<string, string> = {
   'video/mp4': 'mp4',
   'video/webm': 'webm',
@@ -96,13 +154,20 @@ export async function downloadToFile(params: {
   url: string;
   outputPath: string;
   fileNameHint?: string | null;
+  cookie?: string | null;
+  referer?: string | null;
 }): Promise<{ absolutePath: string; fileName: string; sizeBytes: number; mimeType: string | null }> {
   // HLS stream harvesting path.
   if (isLikelyHlsUrl(params.url)) {
     return downloadHlsWithFfmpeg(params);
   }
 
-  const res = await fetch(params.url, { redirect: 'follow' });
+  const res = await fetchWithSafeRedirects({
+    url: params.url,
+    cookie: params.cookie ?? null,
+    referer: params.referer ?? null,
+    accept: '*/*',
+  });
   if (!res.ok) {
     throw new Error(`Download failed (${res.status}) for ${params.url}`);
   }
@@ -111,6 +176,21 @@ export async function downloadToFile(params: {
   }
 
   const mimeType = res.headers.get('content-type');
+  // When Patreon auth is missing/expired, it often returns an HTML page instead of the file.
+  // Treat this as a failure so the UI shows the item as not archived (and can be retried).
+  if (mimeType && mimeType.toLowerCase().includes('text/html')) {
+    const host = (() => {
+      try {
+        return new URL(params.url).hostname;
+      } catch {
+        return '';
+      }
+    })();
+    if (host && isPatreonHost(host)) {
+      const snippet = (await res.text().catch(() => '')).slice(0, 200).replace(/\s+/g, ' ');
+      throw new Error(`Patreon returned HTML instead of a file. Cookie may be missing/expired. Snippet: ${snippet}`);
+    }
+  }
   const extFromMime = extensionFromMime(mimeType);
 
   const hinted = params.fileNameHint ? sanitizeFileName(params.fileNameHint) : null;

@@ -78,10 +78,13 @@ export async function archiveContentItem(contentItemId: number): Promise<{ local
   let downloaded = false;
 
   if (item.downloadUrl) {
+    const patreonCookie = process.env.PATRON_HUB_PATREON_COOKIE || null;
     const result = await downloadToFile({
       url: item.downloadUrl,
       outputPath: baseOutputPath,
       fileNameHint: item.fileNameHint,
+      cookie: item.platform === 'patreon' ? patreonCookie : null,
+      referer: item.platform === 'patreon' ? 'https://www.patreon.com/home' : null,
     });
     absolutePath = result.absolutePath;
     fileName = result.fileName;
