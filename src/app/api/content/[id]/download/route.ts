@@ -150,6 +150,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   // looks like an infinite spinner).
   if (wantsHtml && !disposition) {
     const fileName = row[0].fileName || path.basename(row[0].localPath) || 'download';
+    const archiveRootText = archiveRoot;
     const html = `<!doctype html>
 <html>
   <head>
@@ -170,19 +171,38 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   </head>
   <body>
     <div class="card">
-      <h1>This archived file can’t be previewed in your browser</h1>
-      <p>Some file types (like TouchDesigner <code>.tox</code> and other binary formats) must be downloaded and opened on your computer.</p>
+      <h1>Archived on your server (not previewable in the browser)</h1>
+      <p>This item is already saved on the Ubuntu server’s disk. Your browser just can’t display this file type inline (common for <code>.zip</code>, <code>.tox</code>, and other binary formats).</p>
       <div class="btnrow">
-        <a class="btn primary" href="${url.pathname}?disposition=attachment">Download file</a>
-        <a class="btn" href="${url.pathname}?disposition=inline">Try open inline</a>
+        <a class="btn primary" href="${url.pathname}?disposition=attachment">Download to this computer</a>
+        <a class="btn" href="#" onclick="copyPath(); return false;">Copy server file path</a>
       </div>
+      <p style="margin-top: 10px;">Tip: if you set up an SMB share for the archive folder, you can open these files directly from Finder without using the browser download button.</p>
       <pre><code>${[
         `fileName: ${row[0].fileName || ''}`,
         `mimeType: ${row[0].mimeType || ''}`,
         `size: ${bytesToHuman(stat.size)} (${stat.size} bytes)`,
+        `archiveRoot: ${archiveRootText}`,
         `archiveRelativePath: ${row[0].localPath}`,
+        `absolutePath: ${absPath}`,
       ].join('\n')}</code></pre>
     </div>
+    <script>
+      function copyPath() {
+        const path = ${JSON.stringify(absPath)};
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(path).then(() => alert("Copied server path to clipboard."));
+          return;
+        }
+        const ta = document.createElement("textarea");
+        ta.value = path;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        alert("Copied server path to clipboard.");
+      }
+    </script>
   </body>
 </html>`;
     return new Response(html, {

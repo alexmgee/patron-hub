@@ -484,7 +484,7 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
                           <a
                             href={`/api/content/${item.id}/download?disposition=attachment`}
                             className="flex h-8 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-xs font-medium text-zinc-200 hover:bg-zinc-700"
-                            title="Download archived file"
+                            title="Download from your server to this computer"
                           >
                             <Download className="h-3.5 w-3.5" />
                           </a>
