@@ -25,6 +25,5 @@ export default async function CreatorPage(props: { params: { id: string } }) {
   }
 
   const items = await getCreatorContentItems(creatorId);
-
   return <CreatorDetailPageClient creator={creator} items={items} />;
 }

@@ -3,6 +3,22 @@ import { db } from './index';
 import { contentItems, creators, subscriptions } from './schema';
 import type { ContentType, Platform } from './schema';
 
+function parseJsonStringArray(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter((v) => typeof v === 'string') as string[];
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      return Array.isArray(parsed) ? (parsed.filter((v) => typeof v === 'string') as string[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 export type DashboardCreator = {
   creatorId: number;
   name: string;
@@ -197,7 +213,8 @@ export async function getCreatorContentItems(creatorId: number): Promise<Creator
       publishedAt: contentItems.publishedAt,
       isSeen: contentItems.isSeen,
       isArchived: contentItems.isArchived,
-      tags: contentItems.tags,
+      // Avoid Drizzle JSON decoding throwing on invalid historical rows; parse safely below.
+      tagsRaw: sql<string>`coalesce(${contentItems.tags}, '[]')`,
       externalUrl: contentItems.externalUrl,
     })
     .from(contentItems)
@@ -212,7 +229,7 @@ export async function getCreatorContentItems(creatorId: number): Promise<Creator
     publishedAtIso: toIsoOrNull(r.publishedAt),
     isSeen: Boolean(r.isSeen),
     isArchived: Boolean(r.isArchived),
-    tags: (r.tags ?? []) as string[],
+    tags: parseJsonStringArray((r as unknown as { tagsRaw?: unknown }).tagsRaw),
     externalUrl: r.externalUrl ?? null,
   }));
 }
