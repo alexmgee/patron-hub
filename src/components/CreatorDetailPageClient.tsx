@@ -421,6 +421,10 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
                 const publishedText = publishedAt
                   ? `${format(publishedAt, 'MMM d, yyyy')} (${formatDistanceToNow(publishedAt, { addSuffix: true })})`
                   : 'Unknown date';
+                const viewHref =
+                  item.contentType === 'attachment'
+                    ? `/api/content/${item.id}/download`
+                    : `/api/content/${item.id}/download?disposition=inline`;
 
                 return (
                   <div
@@ -468,14 +472,14 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
                       {item.isArchived ? (
                         <>
                           <a
-                            href={`/api/content/${item.id}/download`}
+                            href={viewHref}
                             target="_blank"
                             rel="noreferrer"
                             className="flex h-8 items-center gap-1 rounded-lg bg-emerald-500/20 px-3 text-xs font-medium text-emerald-400 hover:bg-emerald-500/30"
-                            title="Open archived file from your server"
+                            title="View the archived file (opens in a new tab when previewable)"
                           >
                             <FolderOpen className="h-3 w-3" />
-                            Open
+                            View
                           </a>
                           <a
                             href={`/api/content/${item.id}/download?disposition=attachment`}
