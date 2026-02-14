@@ -24,6 +24,37 @@ function contentDisposition(disposition: string | null, fileName: string): strin
   return `${type}; filename="${safe}"`;
 }
 
+function isInlineMime(mimeType: string | null): boolean {
+  if (!mimeType) return false;
+  const mime = mimeType.split(';')[0].trim().toLowerCase();
+  return (
+    mime.startsWith('image/') ||
+    mime.startsWith('video/') ||
+    mime.startsWith('audio/') ||
+    mime.startsWith('text/') ||
+    mime === 'application/pdf'
+  );
+}
+
+function isInlineExtension(fileName: string): boolean {
+  const ext = path.extname(fileName).toLowerCase();
+  return (
+    ext === '.pdf' ||
+    ext === '.jpg' ||
+    ext === '.jpeg' ||
+    ext === '.png' ||
+    ext === '.gif' ||
+    ext === '.webp' ||
+    ext === '.mp4' ||
+    ext === '.webm' ||
+    ext === '.mp3' ||
+    ext === '.m4a' ||
+    ext === '.wav' ||
+    ext === '.txt' ||
+    ext === '.json'
+  );
+}
+
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser();
   if (!user) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
@@ -70,7 +101,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   }
 
   const url = new URL(req.url);
-  const disposition = url.searchParams.get('disposition'); // 'inline' | 'attachment'
+  const requested = url.searchParams.get('disposition'); // 'inline' | 'attachment'
+  const inferredInline = isInlineMime(row[0].mimeType || null) || isInlineExtension(row[0].fileName || '');
+  const disposition = requested === 'inline' || requested === 'attachment' ? requested : inferredInline ? 'inline' : 'attachment';
 
   const headers = new Headers();
   headers.set('content-type', row[0].mimeType || 'application/octet-stream');
@@ -83,4 +116,3 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
   return new Response(webStream, { status: 200, headers });
 }
-
