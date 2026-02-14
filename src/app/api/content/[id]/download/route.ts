@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { downloads } from '@/lib/db/schema';
 import { getAuthUser } from '@/lib/auth/api';
@@ -148,27 +148,58 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     return NextResponse.json({ ok: false, error: 'invalid id' }, { status: 400 });
   }
 
-  const row = await db
+  const url = new URL(req.url);
+  const downloadIdParam = url.searchParams.get('downloadId');
+  const which = url.searchParams.get('which'); // 'snapshot' | 'primary' | null
+
+  const accept = req.headers.get('accept') || '';
+  const wantsHtml = accept.includes('text/html');
+
+  const rows = await db
     .select({
+      id: downloads.id,
       localPath: downloads.localPath,
       fileName: downloads.fileName,
+      fileType: downloads.fileType,
       mimeType: downloads.mimeType,
       sizeBytes: downloads.sizeBytes,
+      downloadedAt: downloads.downloadedAt,
     })
     .from(downloads)
-    .where(eq(downloads.contentItemId, contentItemId))
-    .limit(1);
+    .where(
+      downloadIdParam && Number.isFinite(Number(downloadIdParam))
+        ? and(eq(downloads.id, Number(downloadIdParam)), eq(downloads.contentItemId, contentItemId))
+        : eq(downloads.contentItemId, contentItemId)
+    );
 
-  if (!row[0]?.localPath) {
-    return NextResponse.json({ ok: false, error: 'no archived file found for this item' }, { status: 404 });
+  if (rows.length === 0) {
+    return NextResponse.json({ ok: false, error: 'no archived files found for this item' }, { status: 404 });
   }
+
+  const snapshotRow =
+    rows.find((r) => r.fileType === 'snapshot' || r.fileName === 'post.html' || (r.mimeType || '').startsWith('text/html')) ?? null;
+  const primaryRow =
+    rows.find((r) => r.fileType !== 'snapshot' && !(r.mimeType || '').startsWith('text/html')) ??
+    rows.find((r) => r.fileType !== 'snapshot') ??
+    null;
+
+  const chosen =
+    which === 'snapshot'
+      ? snapshotRow ?? rows[0]
+      : which === 'primary'
+        ? primaryRow ?? rows[0]
+        : downloadIdParam
+          ? rows[0]
+          : wantsHtml
+            ? snapshotRow ?? primaryRow ?? rows[0]
+            : primaryRow ?? snapshotRow ?? rows[0];
 
   const configuredArchiveDir = await getSetting<string | null>('archive_dir', null);
   const archiveRoot = resolveArchiveDirectory(configuredArchiveDir);
 
   let absPath: string;
   try {
-    absPath = safeJoin(archiveRoot, row[0].localPath);
+    absPath = safeJoin(archiveRoot, chosen.localPath);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ ok: false, error: msg }, { status: 400 });
@@ -183,22 +214,18 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     return NextResponse.json({ ok: false, error: 'archived path is not a file' }, { status: 404 });
   }
 
-  const url = new URL(req.url);
   const requested = url.searchParams.get('disposition'); // 'inline' | 'attachment'
-  const rowMime = (row[0].mimeType || '').split(';')[0].trim();
+  const rowMime = (chosen.mimeType || '').split(';')[0].trim();
   const sniffed = !rowMime || rowMime === 'application/octet-stream' ? sniffMimeTypeFromDisk(absPath) : null;
   const effectiveMime = rowMime || sniffed || '';
-  const inferredInline = isInlineMime(effectiveMime || null) || isInlineExtension(row[0].fileName || '');
+  const inferredInline = isInlineMime(effectiveMime || null) || isInlineExtension(chosen.fileName || '');
   const disposition = requested === 'inline' || requested === 'attachment' ? requested : inferredInline ? 'inline' : null;
-
-  const accept = req.headers.get('accept') || '';
-  const wantsHtml = accept.includes('text/html');
 
   // If the browser is navigating directly to this endpoint for a non-previewable file,
   // return a small HTML page instead of streaming a binary blob into a tab (which often
   // looks like an infinite spinner).
   if (wantsHtml && !disposition) {
-    const fileName = row[0].fileName || path.basename(row[0].localPath) || 'download';
+    const fileName = chosen.fileName || path.basename(chosen.localPath) || 'download';
     const archiveRootText = archiveRoot;
     const html = `<!doctype html>
 <html>
@@ -228,12 +255,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       </div>
       <p style="margin-top: 10px;">Tip: if you set up an SMB share for the archive folder, you can open these files directly from Finder without using the browser download button.</p>
       <pre><code>${[
-        `fileName: ${row[0].fileName || ''}`,
-        `mimeType(db): ${row[0].mimeType || ''}`,
+        `fileName: ${chosen.fileName || ''}`,
+        `mimeType(db): ${chosen.mimeType || ''}`,
         `mimeType(sniffed): ${sniffed || ''}`,
         `size: ${bytesToHuman(stat.size)} (${stat.size} bytes)`,
         `archiveRoot: ${archiveRootText}`,
-        `archiveRelativePath: ${row[0].localPath}`,
+        `archiveRelativePath: ${chosen.localPath}`,
         `absolutePath: ${absPath}`,
       ].join('\n')}</code></pre>
     </div>
@@ -269,7 +296,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const headers = new Headers();
   headers.set('content-type', effectiveMime || 'application/octet-stream');
   headers.set('accept-ranges', 'bytes');
-  headers.set('content-disposition', contentDisposition(finalDisposition, row[0].fileName || 'download'));
+  headers.set('content-disposition', contentDisposition(finalDisposition, chosen.fileName || 'download'));
   headers.set('cache-control', 'private, no-cache, no-store, max-age=0, must-revalidate');
 
   const range = parseRange(req.headers.get('range'), stat.size);

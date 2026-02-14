@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, lte, lt, or } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { contentItems, creators, harvestJobs, subscriptions, syncLogs } from '@/lib/db/schema';
+import { contentItems, creators, downloads, harvestJobs, subscriptions, syncLogs } from '@/lib/db/schema';
 import { archiveContentItem } from '@/lib/archive/archive-content';
 import { fetchPatreonMemberships, fetchPatreonPosts, resolvePatreonPostMedia } from '@/lib/adapters/patreon';
 
@@ -387,12 +387,28 @@ export async function syncPatreon(opts: SyncOptions): Promise<SyncStats> {
       itemsFound = posts.length;
       stats.postsFound += posts.length;
 
+      // If a legacy archive run saved only a binary (or an HTML login page) and no local post snapshot,
+      // force an archive pass so "View" can show the local `post.html`.
+      const missingSnapshotRows = await db
+        .select({ externalId: contentItems.externalId })
+        .from(contentItems)
+        .leftJoin(
+          downloads,
+          and(eq(downloads.contentItemId, contentItems.id), eq(downloads.fileType, 'snapshot'))
+        )
+        .where(and(eq(contentItems.subscriptionId, sub.id), isNull(downloads.id)));
+
+      const missingSnapshotExternalIds = new Set<string>(
+        missingSnapshotRows.map((r) => String(r.externalId ?? '')).filter((s) => s.length > 0)
+      );
+
       for (const post of posts) {
         const publishedAt = post.publishedAtIso ? new Date(post.publishedAtIso) : null;
         const existingByExternalId = await db
           .select({
             id: contentItems.id,
             isArchived: contentItems.isArchived,
+            archiveError: contentItems.archiveError,
             existingDownloadUrl: contentItems.downloadUrl,
             existingFileNameHint: contentItems.fileNameHint,
           })
@@ -472,9 +488,17 @@ export async function syncPatreon(opts: SyncOptions): Promise<SyncStats> {
           if (inserted) stats.harvestJobsQueued += 1;
         }
 
+        const shouldArchive =
+          contentItemId &&
+          opts.globalAutoDownloadEnabled &&
+          sub.autoDownloadEnabled &&
+          (!existingByExternalId[0]?.isArchived ||
+            Boolean(existingByExternalId[0]?.archiveError) ||
+            missingSnapshotExternalIds.has(post.externalId));
+
         // Archive to local disk when auto-download is enabled.
-        // If there is no direct download URL, `archiveContentItem` will create a viewable HTML snapshot instead.
-        if (contentItemId && opts.globalAutoDownloadEnabled && sub.autoDownloadEnabled) {
+        // This always creates/refreshes a local post snapshot, and also attempts to download a primary attachment/media.
+        if (shouldArchive) {
           try {
             const result = await archiveContentItem(contentItemId);
             if (result.downloaded) {

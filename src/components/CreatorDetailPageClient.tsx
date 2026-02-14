@@ -423,8 +423,8 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
                   : 'Unknown date';
                 const viewHref =
                   item.contentType === 'attachment'
-                    ? `/api/content/${item.id}/download`
-                    : `/api/content/${item.id}/download?disposition=inline`;
+                    ? `/api/content/${item.id}/download?which=snapshot`
+                    : `/api/content/${item.id}/download?which=snapshot`;
 
                 return (
                   <div
@@ -476,13 +476,13 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
                             target="_blank"
                             rel="noreferrer"
                             className="flex h-8 items-center gap-1 rounded-lg bg-emerald-500/20 px-3 text-xs font-medium text-emerald-400 hover:bg-emerald-500/30"
-                            title="View the archived file (opens in a new tab when previewable)"
+                            title="View the archived post snapshot (local HTML)"
                           >
                             <FolderOpen className="h-3 w-3" />
                             View
                           </a>
                           <a
-                            href={`/api/content/${item.id}/download?disposition=attachment`}
+                            href={`/api/content/${item.id}/download?which=primary&disposition=attachment`}
                             className="flex h-8 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-xs font-medium text-zinc-200 hover:bg-zinc-700"
                             title="Download from your server to this computer"
                           >

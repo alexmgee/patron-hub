@@ -103,6 +103,46 @@ async function fetchPatreonHtmlSnapshot(url: string, rawCookie: string): Promise
   throw new Error(`Too many redirects while snapshotting: ${url}`);
 }
 
+async function upsertDownloadRow(params: {
+  contentItemId: number;
+  fileName: string;
+  fileType: string;
+  mimeType: string | null;
+  sizeBytes: number;
+  localPath: string;
+}): Promise<void> {
+  const existing = await db
+    .select({ id: downloads.id })
+    .from(downloads)
+    .where(and(eq(downloads.contentItemId, params.contentItemId), eq(downloads.localPath, params.localPath)))
+    .limit(1);
+
+  if (!existing[0]) {
+    await db.insert(downloads).values({
+      contentItemId: params.contentItemId,
+      fileName: params.fileName,
+      fileType: params.fileType,
+      mimeType: params.mimeType,
+      sizeBytes: params.sizeBytes,
+      localPath: params.localPath,
+      downloadedAt: new Date(),
+      createdAt: new Date(),
+    });
+    return;
+  }
+
+  await db
+    .update(downloads)
+    .set({
+      fileName: params.fileName,
+      fileType: params.fileType,
+      mimeType: params.mimeType,
+      sizeBytes: params.sizeBytes,
+      downloadedAt: new Date(),
+    })
+    .where(eq(downloads.id, existing[0].id));
+}
+
 export async function archiveContentItem(contentItemId: number): Promise<{ localPath: string; downloaded: boolean }> {
   const configuredArchiveDir = await getSetting<string | null>('archive_dir', null);
   const archiveRoot = resolveArchiveDirectory(configuredArchiveDir);
@@ -137,65 +177,41 @@ export async function archiveContentItem(contentItemId: number): Promise<{ local
         ? new Date(item.publishedAt as unknown as number)
         : new Date();
 
-  const baseFileName = item.downloadUrl
-    ? `download.${contentTypeFallbackExtension(String(item.contentType))}`
-    : `post.html`;
-
   const baseOutputPath = generateFilePath({
     platform: asPlatform(item.platform),
     creatorSlug: item.creatorSlug,
     publishedAt,
     title: item.title,
-    // this gets replaced by downloader when a fileNameHint or URL file name is available
-    fileName: baseFileName,
+    // Path is used mainly to compute the per-post directory. Actual file name is chosen later.
+    fileName: `download.${contentTypeFallbackExtension(String(item.contentType))}`,
     archiveDir: configuredArchiveDir,
   });
 
-  let absolutePath = baseOutputPath;
-  let fileName = path.basename(baseOutputPath);
-  let sizeBytes = 0;
-  let mimeType: string | null = null;
-  let downloaded = false;
+  const contentDir = path.dirname(baseOutputPath);
 
-  if (item.downloadUrl) {
-    const patreonCookie = process.env.PATRON_HUB_PATREON_COOKIE || null;
-    const result = await downloadToFile({
-      url: item.downloadUrl,
-      outputPath: baseOutputPath,
-      fileNameHint: item.fileNameHint,
-      cookie: item.platform === 'patreon' ? patreonCookie : null,
-      referer: item.platform === 'patreon' ? 'https://www.patreon.com/home' : null,
-    });
-    absolutePath = result.absolutePath;
-    fileName = result.fileName;
-    sizeBytes = result.sizeBytes;
-    mimeType = result.mimeType;
-    downloaded = true;
+  // Always create a local, viewable snapshot so the "View" action can show something
+  // even when attachments are not browser-previewable.
+  const snapshotPath = path.join(contentDir, 'post.html');
+  ensureArchiveDirectory(snapshotPath);
+
+  const title = escapeHtml(item.title);
+  const sourceUrl = typeof item.externalUrl === 'string' ? item.externalUrl : null;
+  const hasDbContent = typeof item.description === 'string' && item.description.trim().length > 0;
+
+  let bodyHtml = '';
+  if (hasDbContent) {
+    bodyHtml = stripScripts(String(item.description));
+  } else if (item.platform === 'patreon' && sourceUrl) {
+    const cookie = process.env.PATRON_HUB_PATREON_COOKIE || '';
+    if (!cookie) throw new Error('Cannot snapshot Patreon HTML without PATRON_HUB_PATREON_COOKIE set');
+    const raw = await fetchPatreonHtmlSnapshot(sourceUrl, cookie);
+    // Store a readable capture of what we got. (We do not execute Patreon scripts.)
+    bodyHtml = `<pre style="white-space:pre-wrap; word-break:break-word;">${escapeHtml(raw.slice(0, 5_000_000))}</pre>`;
   } else {
-    // No direct download URL. Create a *real* local snapshot that is viewable in the browser:
-    // - Prefer API post content already stored in DB (item.description)
-    // - Fallback to a raw HTML snapshot of the Patreon post page (item.externalUrl)
-    ensureArchiveDirectory(baseOutputPath);
-    absolutePath = baseOutputPath;
+    bodyHtml = `<p><em>No post body was captured for this item.</em></p>`;
+  }
 
-    const title = escapeHtml(item.title);
-    const sourceUrl = typeof item.externalUrl === 'string' ? item.externalUrl : null;
-    const hasDbContent = typeof item.description === 'string' && item.description.trim().length > 0;
-
-    let bodyHtml = '';
-    if (hasDbContent) {
-      bodyHtml = stripScripts(String(item.description));
-    } else if (item.platform === 'patreon' && sourceUrl) {
-      const cookie = process.env.PATRON_HUB_PATREON_COOKIE || '';
-      if (!cookie) throw new Error('Cannot snapshot Patreon HTML without PATRON_HUB_PATREON_COOKIE set');
-      const raw = await fetchPatreonHtmlSnapshot(sourceUrl, cookie);
-      // The full Patreon HTML isn't ideal for offline viewing, but it's still a real snapshot of what you received.
-      bodyHtml = `<pre style="white-space:pre-wrap; word-break:break-word;">${escapeHtml(raw.slice(0, 5_000_000))}</pre>`;
-    } else {
-      throw new Error('No downloadUrl and no snapshot source available (missing post content and externalUrl).');
-    }
-
-    const snapshot = `<!doctype html>
+  const snapshot = `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -215,7 +231,7 @@ export async function archiveContentItem(contentItemId: number): Promise<{ local
     <div class="wrap">
       <h1 style="font-size:18px; margin:0 0 6px;">${title}</h1>
       <div class="meta">
-        <div>Archived snapshot (no direct download URL for this item)</div>
+        <div>Archived snapshot (local copy)</div>
         <div>Published: ${escapeHtml(publishedAt.toISOString())}</div>
         ${sourceUrl ? `<div>Source: <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(sourceUrl)}</a></div>` : ''}
       </div>
@@ -226,51 +242,61 @@ export async function archiveContentItem(contentItemId: number): Promise<{ local
   </body>
 </html>`;
 
-    fs.writeFileSync(absolutePath, snapshot, 'utf8');
-    fileName = path.basename(absolutePath) || fileName;
-    sizeBytes = fs.statSync(absolutePath).size;
-    mimeType = 'text/html; charset=utf-8';
-    downloaded = false;
-  }
+  fs.writeFileSync(snapshotPath, snapshot, 'utf8');
+  const snapStat = fs.statSync(snapshotPath);
+  const snapshotLocalPath = getRelativeArchivePathFromRoot(snapshotPath, archiveRoot);
+  await upsertDownloadRow({
+    contentItemId,
+    fileName: 'post.html',
+    fileType: 'snapshot',
+    mimeType: 'text/html; charset=utf-8',
+    sizeBytes: snapStat.size,
+    localPath: snapshotLocalPath,
+  });
 
-  const localPath = getRelativeArchivePathFromRoot(absolutePath, archiveRoot);
+  // Then attempt to download the primary attachment/media file (if available).
+  let downloadedAny = false;
+  let archiveError: string | null = null;
+  if (item.downloadUrl) {
+    try {
+      const patreonCookie = process.env.PATRON_HUB_PATREON_COOKIE || null;
+      const result = await downloadToFile({
+        url: item.downloadUrl,
+        // Downloader uses dirname(outputPath) as the destination directory.
+        outputPath: path.join(contentDir, `download.${contentTypeFallbackExtension(String(item.contentType))}`),
+        fileNameHint: item.fileNameHint,
+        cookie: item.platform === 'patreon' ? patreonCookie : null,
+        referer: item.platform === 'patreon' ? 'https://www.patreon.com/home' : null,
+      });
 
-  await db.update(contentItems).set({ isArchived: true, archiveError: null }).where(eq(contentItems.id, contentItemId));
-
-  const existing = await db
-    .select({ id: downloads.id })
-    .from(downloads)
-    .where(eq(downloads.contentItemId, contentItemId))
-    .limit(1);
-
-  if (!existing[0]) {
-    await db.insert(downloads).values({
-      contentItemId,
-      fileName,
-      fileType: String(item.contentType),
-      mimeType,
-      sizeBytes,
-      localPath,
-      downloadedAt: new Date(),
-    });
-  } else {
-    await db
-      .update(downloads)
-      .set({
-        fileName,
+      const localPath = getRelativeArchivePathFromRoot(result.absolutePath, archiveRoot);
+      await upsertDownloadRow({
+        contentItemId,
+        fileName: result.fileName,
         fileType: String(item.contentType),
-        mimeType,
-        sizeBytes,
+        mimeType: result.mimeType,
+        sizeBytes: result.sizeBytes,
         localPath,
-        downloadedAt: new Date(),
-      })
-      .where(eq(downloads.id, existing[0].id));
+      });
+      downloadedAny = true;
+    } catch (err) {
+      archiveError = err instanceof Error ? err.message : String(err);
+    }
   }
+
+  await db
+    .update(contentItems)
+    .set({
+      isArchived: true,
+      archiveError,
+      updatedAt: new Date(),
+    })
+    .where(eq(contentItems.id, contentItemId));
 
   await db
     .update(contentItems)
     .set({ isSeen: true, seenAt: new Date() })
     .where(and(eq(contentItems.id, contentItemId), eq(contentItems.isSeen, false)));
 
-  return { localPath, downloaded };
+  return { localPath: snapshotLocalPath, downloaded: downloadedAny };
 }
