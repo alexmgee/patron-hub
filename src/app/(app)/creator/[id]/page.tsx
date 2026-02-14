@@ -3,8 +3,9 @@ import { getCreatorContentItems, getCreatorDetail, getCreatorIdBySlug } from '@/
 
 export const dynamic = 'force-dynamic';
 
-export default async function CreatorPage(props: { params: { id: string } }) {
-  const raw = props?.params?.id ?? '';
+export default async function CreatorPage(props: { params: Promise<{ id: string }> }) {
+  const { id: rawParam } = await props.params;
+  const raw = rawParam ?? '';
   const numeric = Number(raw);
   const creatorId = Number.isFinite(numeric) ? numeric : await getCreatorIdBySlug(raw);
   if (!creatorId) {
