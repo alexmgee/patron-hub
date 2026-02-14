@@ -17,6 +17,7 @@ import {
   Clock,
   Download,
   ExternalLink,
+  FolderOpen,
   LogOut,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -465,10 +466,25 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
 
                     <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
                       {item.isArchived ? (
-                        <span className="flex h-8 items-center gap-1 rounded-lg bg-emerald-500/20 px-3 text-xs font-medium text-emerald-400">
-                          <Download className="h-3 w-3" />
-                          Archived
-                        </span>
+                        <>
+                          <a
+                            href={`/api/content/${item.id}/download`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex h-8 items-center gap-1 rounded-lg bg-emerald-500/20 px-3 text-xs font-medium text-emerald-400 hover:bg-emerald-500/30"
+                            title="Open archived file from your server"
+                          >
+                            <FolderOpen className="h-3 w-3" />
+                            Open
+                          </a>
+                          <a
+                            href={`/api/content/${item.id}/download?disposition=attachment`}
+                            className="flex h-8 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-xs font-medium text-zinc-200 hover:bg-zinc-700"
+                            title="Download archived file"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </a>
+                        </>
                       ) : (
                         <button
                           onClick={() => onArchive(item.id)}
@@ -486,6 +502,7 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
                           rel="noreferrer"
                           className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-100"
                           aria-label="Open external"
+                          title="Open the original Patreon page (source)"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
                         </a>
