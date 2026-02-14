@@ -193,7 +193,8 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
           <CreatorCard
             key={`${creator.platform}:${creator.creatorId}`}
             creator={creator}
-            onClick={() => router.push(`/creator/${encodeURIComponent(String(creator.creatorId))}`)}
+            // Route by slug (stable) rather than numeric id (can be missing/undefined in rare UI states).
+            onClick={() => router.push(`/creator/${encodeURIComponent(creator.slug)}`)}
           />
         ))}
       </div>
