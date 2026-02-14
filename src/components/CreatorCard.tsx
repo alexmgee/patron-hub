@@ -54,13 +54,20 @@ export default function CreatorCard({ creator, onClick }: CreatorCardProps) {
     const platform = platformConfig[creator.platform];
     const hasNewItems = creator.newItemCount > 0;
 
+    const safeDate = (value?: string | null): Date | null => {
+        if (!value) return null;
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d;
+    };
+
     // Format cost
     const hasKnownCost = creator.costCents > 0;
     const monthlyCost = hasKnownCost ? (creator.costCents / 100).toFixed(2) : null;
 
     // Format last post date
-    const lastPostText = creator.lastPostDateIso
-        ? formatDistanceToNow(new Date(creator.lastPostDateIso), { addSuffix: true })
+    const lastPostDate = safeDate(creator.lastPostDateIso);
+    const lastPostText = lastPostDate
+        ? formatDistanceToNow(lastPostDate, { addSuffix: true })
         : 'No posts yet';
 
     return (

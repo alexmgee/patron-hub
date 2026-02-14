@@ -51,6 +51,12 @@ const platformLabel: Record<Platform, string> = {
 export default function CreatorDetailPageClient(props: { creator: CreatorDetail; items: CreatorContentItem[] }) {
   const { creator, items } = props;
 
+  const safeDate = (value?: string | null): Date | null => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
   const [filter, setFilter] = useState<'all' | 'new'>('all');
   const [selectedType, setSelectedType] = useState<ContentType | 'all'>('all');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -186,7 +192,10 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
             <div className="flex items-center gap-2">
               <span className="text-zinc-500">Member since</span>
               <span className="text-zinc-100">
-                {creator.memberSinceIso ? format(new Date(creator.memberSinceIso), 'MMM yyyy') : 'Unknown'}
+                {(() => {
+                  const d = safeDate(creator.memberSinceIso);
+                  return d ? format(d, 'MMM yyyy') : 'Unknown';
+                })()}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -347,8 +356,9 @@ export default function CreatorDetailPageClient(props: { creator: CreatorDetail;
 
             <div className="space-y-3">
               {filteredItems.map((item) => {
-                const publishedText = item.publishedAtIso
-                  ? `${format(new Date(item.publishedAtIso), 'MMM d, yyyy')} (${formatDistanceToNow(new Date(item.publishedAtIso), { addSuffix: true })})`
+                const publishedAt = safeDate(item.publishedAtIso);
+                const publishedText = publishedAt
+                  ? `${format(publishedAt, 'MMM d, yyyy')} (${formatDistanceToNow(publishedAt, { addSuffix: true })})`
                   : 'Unknown date';
 
                 return (
