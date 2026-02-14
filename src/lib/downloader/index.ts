@@ -100,6 +100,18 @@ function ensureExtension(fileName: string, extension: string | null): string {
   return `${fileName}.${extension}`;
 }
 
+function uniqueNameIfExists(dir: string, fileName: string): string {
+  const ext = path.extname(fileName);
+  const base = ext ? fileName.slice(0, -ext.length) : fileName;
+  let candidate = fileName;
+  let n = 2;
+  while (fs.existsSync(path.join(dir, candidate))) {
+    candidate = `${base}-${n}${ext}`;
+    n += 1;
+  }
+  return candidate;
+}
+
 function isLikelyHlsUrl(url: string): boolean {
   return /\.m3u8(?:\?|$)/i.test(url);
 }
@@ -124,7 +136,8 @@ function downloadHlsWithFfmpeg(params: { url: string; outputPath: string; fileNa
   const dir = path.dirname(params.outputPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  const absolutePath = path.join(dir, finalName);
+  const resolvedName = uniqueNameIfExists(dir, finalName);
+  const absolutePath = path.join(dir, resolvedName);
   try {
     execFileSync(
       'ffmpeg',
@@ -144,7 +157,7 @@ function downloadHlsWithFfmpeg(params: { url: string; outputPath: string; fileNa
   const stat = fs.statSync(absolutePath);
   return {
     absolutePath,
-    fileName: finalName,
+    fileName: resolvedName,
     sizeBytes: stat.size,
     mimeType: 'video/mp4',
   };
@@ -201,14 +214,15 @@ export async function downloadToFile(params: {
   const dir = path.dirname(params.outputPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  const absolutePath = path.join(dir, finalName);
+  const resolvedName = uniqueNameIfExists(dir, finalName);
+  const absolutePath = path.join(dir, resolvedName);
   const buffer = Buffer.from(await res.arrayBuffer());
   fs.writeFileSync(absolutePath, buffer);
 
   const stat = fs.statSync(absolutePath);
   return {
     absolutePath,
-    fileName: finalName,
+    fileName: resolvedName,
     sizeBytes: stat.size,
     mimeType,
   };

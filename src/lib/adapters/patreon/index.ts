@@ -51,6 +51,7 @@ export type PatreonPost = {
   tags: string[];
   downloadUrl: string | null;
   fileNameHint: string | null;
+  assets?: Array<{ url: string; fileNameHint: string | null; assetType: 'attachment' | 'image' | 'audio' | 'video' | 'unknown' }>;
 };
 
 export type PatreonResolvedMedia = {
@@ -490,6 +491,60 @@ function extractMediaUrl(resources: JsonApiResource[], post: JsonApiResource): {
   return { downloadUrl: null, fileNameHint: null };
 }
 
+function extractMediaAssets(resources: JsonApiResource[], post: JsonApiResource): Array<{
+  url: string;
+  fileNameHint: string | null;
+  assetType: 'attachment' | 'image' | 'audio' | 'video' | 'unknown';
+}> {
+  const out: Array<{ url: string; fileNameHint: string | null; assetType: 'attachment' | 'image' | 'audio' | 'video' | 'unknown' }> = [];
+
+  function push(url: string | null, fileNameHint: string | null, assetType: 'attachment' | 'image' | 'audio' | 'video' | 'unknown') {
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) return;
+    out.push({ url, fileNameHint, assetType });
+  }
+
+  for (const item of resources) {
+    const attrs = item.attributes ?? {};
+    const urlCandidates = [
+      pickString(attrs.download_url),
+      pickString(attrs.url),
+      pickString(attrs.file_url),
+      pickString((attrs.image_urls as Record<string, unknown> | undefined)?.original),
+      pickString((attrs.image_urls as Record<string, unknown> | undefined)?.default),
+      pickString((attrs.image as Record<string, unknown> | undefined)?.large_url),
+      pickString(attrs.display_url),
+      pickString(attrs.player_url),
+      pickString(attrs.stream_url),
+    ].filter(Boolean) as string[];
+
+    const fileNameHint =
+      pickString(attrs.name) ||
+      pickString((attrs.file_name as unknown) ?? null) ||
+      pickString((attrs.filename as unknown) ?? null);
+
+    for (const u of urlCandidates) {
+      const ct = getContentTypeFromExtension(u);
+      const assetType: 'attachment' | 'image' | 'audio' | 'video' | 'unknown' =
+        ct === 'image' ? 'image' : ct === 'audio' ? 'audio' : ct === 'video' ? 'video' : ct === 'pdf' ? 'attachment' : 'attachment';
+      push(u, fileNameHint, assetType);
+    }
+  }
+
+  const postFileUrl = pickString((post.attributes?.post_file as Record<string, unknown> | undefined)?.url);
+  if (postFileUrl) push(postFileUrl, null, 'attachment');
+
+  // De-dupe by URL.
+  const seen = new Set<string>();
+  const deduped: typeof out = [];
+  for (const a of out) {
+    if (seen.has(a.url)) continue;
+    seen.add(a.url);
+    deduped.push(a);
+  }
+  return deduped;
+}
+
 function inferContentType(post: JsonApiResource, downloadUrl: string | null): ContentType {
   const postType = pickString(post.attributes?.post_type)?.toLowerCase();
   if (postType === 'video_external_file' || postType === 'video') return 'video';
@@ -520,6 +575,7 @@ function parsePosts(payload: JsonApiResponse): PatreonPost[] {
     const related = findRelatedResources(post, map);
     const { downloadUrl, fileNameHint } = extractMediaUrl(related, post);
     const contentType = inferContentType(post, downloadUrl);
+    const assets = extractMediaAssets(related, post);
 
     results.push({
       externalId: String(post.id),
@@ -531,6 +587,7 @@ function parsePosts(payload: JsonApiResponse): PatreonPost[] {
       tags: [],
       downloadUrl,
       fileNameHint,
+      assets,
     });
   }
 

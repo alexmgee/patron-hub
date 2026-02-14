@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, lte, lt, or } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { contentItems, creators, downloads, harvestJobs, subscriptions, syncLogs } from '@/lib/db/schema';
+import { contentAssets, contentItems, creators, downloads, harvestJobs, subscriptions, syncLogs } from '@/lib/db/schema';
 import { archiveContentItem } from '@/lib/archive/archive-content';
 import { fetchPatreonMemberships, fetchPatreonPosts, resolvePatreonPostMedia } from '@/lib/adapters/patreon';
 
@@ -26,6 +26,7 @@ type SyncStats = {
 };
 
 const DOWNLOAD_RESOLVE_JOB_KIND = 'download_url_resolve';
+const HEADLESS_DISCOVER_JOB_KIND = 'headless_asset_discover';
 
 function intFromEnv(key: string, fallback: number): number {
   const raw = process.env[key];
@@ -72,6 +73,65 @@ async function enqueueDownloadResolveJob(contentItemId: number): Promise<boolean
       updatedAt: now,
     })
     .where(eq(harvestJobs.id, existing[0].id));
+
+  return false;
+}
+
+async function upsertContentAssetsForItem(
+  contentItemId: number,
+  assets: Array<{ url: string; fileNameHint: string | null; assetType: string }>
+): Promise<number> {
+  if (!assets || assets.length === 0) return 0;
+  let inserted = 0;
+  const now = new Date();
+  for (const a of assets) {
+    if (!a.url) continue;
+    try {
+      await db
+        .insert(contentAssets)
+        .values({
+          contentItemId,
+          url: a.url,
+          fileNameHint: a.fileNameHint ?? null,
+          assetType: a.assetType || 'attachment',
+          mimeTypeHint: null,
+          status: 'discovered',
+          lastError: null,
+          downloadedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing();
+      inserted += 1;
+    } catch {
+      // best-effort
+    }
+  }
+  return inserted;
+}
+
+async function enqueueHeadlessDiscoverJob(contentItemId: number): Promise<boolean> {
+  const now = new Date();
+  const existing = await db
+    .select({ id: harvestJobs.id })
+    .from(harvestJobs)
+    .where(and(eq(harvestJobs.contentItemId, contentItemId), eq(harvestJobs.kind, HEADLESS_DISCOVER_JOB_KIND)))
+    .limit(1);
+
+  if (!existing[0]) {
+    await db.insert(harvestJobs).values({
+      contentItemId,
+      kind: HEADLESS_DISCOVER_JOB_KIND,
+      status: 'pending',
+      attemptCount: 0,
+      lastAttemptAt: null,
+      nextAttemptAt: now,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return true;
+  }
 
   return false;
 }
@@ -478,6 +538,13 @@ export async function syncPatreon(opts: SyncOptions): Promise<SyncStats> {
           stats.postsUpdated += 1;
         }
 
+        // Record all discovered asset URLs for this post (not just a single "best" downloadUrl).
+        const combinedAssets = [
+          ...(post.assets ?? []),
+          ...(resolvedDownloadUrl ? [{ url: resolvedDownloadUrl, fileNameHint: resolvedFileNameHint ?? null, assetType: 'attachment' }] : []),
+        ];
+        await upsertContentAssetsForItem(contentItemId, combinedAssets);
+
         if (
           contentItemId &&
           !resolvedDownloadUrl &&
@@ -486,6 +553,12 @@ export async function syncPatreon(opts: SyncOptions): Promise<SyncStats> {
         ) {
           const inserted = await enqueueDownloadResolveJob(contentItemId);
           if (inserted) stats.harvestJobsQueued += 1;
+
+          // If the API/HTML didn't produce any candidate assets, queue a headless discovery pass
+          // (handled by an optional worker; safe to queue even if the worker isn't running yet).
+          if ((post.assets ?? []).length === 0 && post.externalUrl) {
+            await enqueueHeadlessDiscoverJob(contentItemId);
+          }
         }
 
         const shouldArchive =

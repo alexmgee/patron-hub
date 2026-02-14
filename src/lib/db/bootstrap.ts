@@ -91,6 +91,29 @@ function ensureHarvestTables(sqlite: Database.Database): void {
   }
 }
 
+function ensureContentAssetsTable(sqlite: Database.Database): void {
+  if (!tableExists(sqlite, 'content_assets')) {
+    sqlite.exec(`
+      CREATE TABLE content_assets (
+        id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+        content_item_id integer NOT NULL,
+        url text NOT NULL,
+        file_name_hint text,
+        asset_type text DEFAULT 'attachment' NOT NULL,
+        mime_type_hint text,
+        status text DEFAULT 'discovered' NOT NULL,
+        last_error text,
+        downloaded_at integer,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL,
+        FOREIGN KEY (content_item_id) REFERENCES content_items(id) ON UPDATE no action ON DELETE cascade
+      );
+      CREATE UNIQUE INDEX content_assets_item_url_unique ON content_assets (content_item_id, url);
+      CREATE INDEX content_assets_status_idx ON content_assets (status, updated_at);
+    `);
+  }
+}
+
 function getMigrationsDir(): string {
   return path.join(process.cwd(), 'drizzle');
 }
@@ -258,6 +281,7 @@ export function bootstrapDb(sqlite: Database.Database): void {
   ensureContentItemColumns(sqlite);
   ensureAuthTables(sqlite);
   ensureHarvestTables(sqlite);
+  ensureContentAssetsTable(sqlite);
 
   // Seed sample data in development (or when explicitly forced).
   if (process.env.NODE_ENV !== 'production' || process.env.PATRON_HUB_FORCE_SEED === '1') {

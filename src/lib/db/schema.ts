@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { index, sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 // ============================================================================
 // USERS
@@ -136,6 +136,31 @@ export const downloads = sqliteTable('downloads', {
 });
 
 // ============================================================================
+// CONTENT ASSETS
+// Discovered remote URLs for a content item (attachments/media/etc) before (or in addition to) downloading.
+// ============================================================================
+export const contentAssets = sqliteTable(
+  'content_assets',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    contentItemId: integer('content_item_id').notNull().references(() => contentItems.id, { onDelete: 'cascade' }),
+    url: text('url').notNull(),
+    fileNameHint: text('file_name_hint'),
+    assetType: text('asset_type').notNull().default('attachment'), // attachment | image | audio | video | unknown
+    mimeTypeHint: text('mime_type_hint'),
+    status: text('status').notNull().default('discovered'), // discovered | downloaded | failed
+    lastError: text('last_error'),
+    downloadedAt: integer('downloaded_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => ({
+    itemUrlUnique: uniqueIndex('content_assets_item_url_unique').on(t.contentItemId, t.url),
+    statusIdx: index('content_assets_status_idx').on(t.status, t.updatedAt),
+  })
+);
+
+// ============================================================================
 // SYNC LOGS
 // Track sync history for each subscription
 // ============================================================================
@@ -204,6 +229,9 @@ export type NewContentItem = typeof contentItems.$inferInsert;
 
 export type Download = typeof downloads.$inferSelect;
 export type NewDownload = typeof downloads.$inferInsert;
+
+export type ContentAsset = typeof contentAssets.$inferSelect;
+export type NewContentAsset = typeof contentAssets.$inferInsert;
 
 export type SyncLog = typeof syncLogs.$inferSelect;
 export type NewSyncLog = typeof syncLogs.$inferInsert;

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { contentItems, creators, downloads, subscriptions } from '@/lib/db/schema';
+import { contentAssets, contentItems, creators, downloads, subscriptions } from '@/lib/db/schema';
 import type { Platform } from '@/lib/db/schema';
 import {
   ensureArchiveDirectory,
@@ -254,17 +254,53 @@ export async function archiveContentItem(contentItemId: number): Promise<{ local
     localPath: snapshotLocalPath,
   });
 
-  // Then attempt to download the primary attachment/media file (if available).
+  // Download all discovered assets for this post (attachments/media/etc).
+  // Sync writes these into `content_assets` as it learns about them.
+  const discovered = await db
+    .select({
+      id: contentAssets.id,
+      url: contentAssets.url,
+      fileNameHint: contentAssets.fileNameHint,
+      assetType: contentAssets.assetType,
+      status: contentAssets.status,
+    })
+    .from(contentAssets)
+    .where(eq(contentAssets.contentItemId, contentItemId));
+
+  const candidates: Array<{ assetId: number | null; url: string; fileNameHint: string | null; assetType: string; status: string }> =
+    discovered.map((d) => ({
+      assetId: d.id,
+      url: d.url,
+      fileNameHint: d.fileNameHint ?? null,
+      assetType: d.assetType || 'attachment',
+      status: d.status || 'discovered',
+    }));
+
+  // Back-compat: ensure the legacy `content_items.download_url` is treated as an asset too.
+  if (item.downloadUrl && !candidates.some((c) => c.url === item.downloadUrl)) {
+    candidates.push({
+      assetId: null,
+      url: item.downloadUrl,
+      fileNameHint: item.fileNameHint ?? null,
+      assetType: String(item.contentType || 'attachment'),
+      status: 'discovered',
+    });
+  }
+
   let downloadedAny = false;
-  let archiveError: string | null = null;
-  if (item.downloadUrl) {
+  const errors: string[] = [];
+  const patreonCookie = process.env.PATRON_HUB_PATREON_COOKIE || null;
+
+  for (const c of candidates) {
+    // Skip snapshot-like entries; those should be `post.html` not a remote download.
+    if (!c.url || !/^https?:\/\//i.test(c.url)) continue;
+    if (c.status === 'downloaded') continue;
+
     try {
-      const patreonCookie = process.env.PATRON_HUB_PATREON_COOKIE || null;
       const result = await downloadToFile({
-        url: item.downloadUrl,
-        // Downloader uses dirname(outputPath) as the destination directory.
+        url: c.url,
         outputPath: path.join(contentDir, `download.${contentTypeFallbackExtension(String(item.contentType))}`),
-        fileNameHint: item.fileNameHint,
+        fileNameHint: c.fileNameHint,
         cookie: item.platform === 'patreon' ? patreonCookie : null,
         referer: item.platform === 'patreon' ? 'https://www.patreon.com/home' : null,
       });
@@ -273,16 +309,42 @@ export async function archiveContentItem(contentItemId: number): Promise<{ local
       await upsertDownloadRow({
         contentItemId,
         fileName: result.fileName,
-        fileType: String(item.contentType),
+        fileType: c.assetType || 'attachment',
         mimeType: result.mimeType,
         sizeBytes: result.sizeBytes,
         localPath,
       });
+
       downloadedAny = true;
+
+      if (c.assetId) {
+        await db
+          .update(contentAssets)
+          .set({
+            status: 'downloaded',
+            lastError: null,
+            downloadedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(contentAssets.id, c.assetId));
+      }
     } catch (err) {
-      archiveError = err instanceof Error ? err.message : String(err);
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(msg);
+      if (c.assetId) {
+        await db
+          .update(contentAssets)
+          .set({
+            status: 'failed',
+            lastError: msg,
+            updatedAt: new Date(),
+          })
+          .where(eq(contentAssets.id, c.assetId));
+      }
     }
   }
+
+  const archiveError = errors.length > 0 ? errors.slice(0, 3).join(' | ') : null;
 
   await db
     .update(contentItems)
