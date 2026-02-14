@@ -234,8 +234,8 @@ export async function getCreatorContentItems(creatorId: number): Promise<Creator
   }));
 }
 
-export async function getCreatorIdBySlug(slug: string): Promise<number | null> {
-  const s = slug.trim();
+export async function getCreatorIdBySlug(slug: unknown): Promise<number | null> {
+  const s = String(slug ?? '').trim();
   if (s.length === 0) return null;
   const row = await db.select({ id: creators.id }).from(creators).where(eq(creators.slug, s)).limit(1);
   return row[0]?.id ?? null;
