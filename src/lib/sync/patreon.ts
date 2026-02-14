@@ -390,6 +390,30 @@ async function upsertPatreonMemberships(rawCookie: string): Promise<{ campaignId
   };
 }
 
+async function archivePendingAssetsForSubscription(subscriptionId: number): Promise<{ archived: number; downloaded: number }> {
+  const max = intFromEnv('PATRON_HUB_PATREON_PENDING_ASSET_ARCHIVE_LIMIT', 40);
+  const pending = await db
+    .select({ contentItemId: contentItems.id })
+    .from(contentItems)
+    .innerJoin(contentAssets, eq(contentAssets.contentItemId, contentItems.id))
+    .where(and(eq(contentItems.subscriptionId, subscriptionId), eq(contentAssets.status, 'discovered')))
+    .groupBy(contentItems.id)
+    .limit(max);
+
+  let archived = 0;
+  let downloaded = 0;
+  for (const row of pending) {
+    try {
+      archived += 1;
+      const result = await archiveContentItem(row.contentItemId);
+      if (result.downloaded) downloaded += 1;
+    } catch {
+      // best-effort; errors are recorded on individual assets/content items by archiveContentItem
+    }
+  }
+  return { archived, downloaded };
+}
+
 export async function syncPatreon(opts: SyncOptions): Promise<SyncStats> {
   const stats: SyncStats = {
     membershipsDiscovered: 0,
@@ -587,6 +611,12 @@ export async function syncPatreon(opts: SyncOptions): Promise<SyncStats> {
 
       await db.update(subscriptions).set({ lastSyncedAt: new Date() }).where(eq(subscriptions.id, sub.id));
       stats.subscriptionsSynced += 1;
+
+      // If any new assets were discovered by headless (or previous parse passes), grab a batch now.
+      if (opts.globalAutoDownloadEnabled && sub.autoDownloadEnabled) {
+        const batch = await archivePendingAssetsForSubscription(sub.id);
+        stats.itemsDownloaded += batch.downloaded;
+      }
     } catch (err) {
       status = 'failed';
       const message = err instanceof Error ? err.message : String(err);
