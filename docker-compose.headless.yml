@@ -1,0 +1,13 @@
+services:
+  patron-hub-headless:
+    build:
+      context: ./headless-worker
+      dockerfile: Dockerfile
+    environment:
+      PATRON_HUB_BASE_URL: http://patron-hub:3000
+      PATRON_HUB_INTERNAL_TOKEN: ${PATRON_HUB_INTERNAL_TOKEN:-}
+      PATRON_HUB_PATREON_COOKIE: ${PATRON_HUB_PATREON_COOKIE:-}
+    depends_on:
+      - patron-hub
+    restart: unless-stopped
+
