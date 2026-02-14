@@ -85,7 +85,7 @@ graph TB
 
 | Service | Host | Port | Status | URL (Local) | URL (Tailscale) |
 |---------|------|------|--------|-------------|-----------------|
-| **Patron Hub** | EliteDesk | 3000 | 🧪 LAN (documented/ready) | `http://192.168.1.10:3000` | `http://100.111.109.23:3000` |
+| **Patron Hub** | EliteDesk | 3010 (current) | 🧪 LAN (documented/ready) | `http://192.168.1.10:3010` | `http://100.111.109.23:3010` |
 | **Portainer** | EliteDesk | 9000 | ✅ Running | `http://192.168.1.10:9000` | `http://100.111.109.23:9000` |
 | **Jellyfin** | EliteDesk | 8096 | ✅ Running (HW Transcode) | `http://192.168.1.10:8096` | `http://100.111.109.23:8096` |
 | **FileBrowser** | EliteDesk | 8080 | ✅ Running | `http://192.168.1.10:8080` | `http://100.111.109.23:8080` |
@@ -121,10 +121,12 @@ graph TB
 ### Patron Hub Notes
 - **Repo:** `https://github.com/alexmgee/patron-hub`
 - **Deployment Docs:** `DEPLOYMENT.md` and `HOMELAB_PATRON_HUB_GUIDE.md`
-- **Compose (LAN):** `docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build`
+- **Compose (LAN):** `PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build`
 - **Storage Paths (host bind mounts):**
   - `./server-data` → `/data` (SQLite)
   - `./server-archive` → `/archive` (downloaded files)
+
+> Note: Patron Hub defaults to port `3000`, but `3010` is used on this server because port `3000` is already allocated by another service.
 
 ---
 

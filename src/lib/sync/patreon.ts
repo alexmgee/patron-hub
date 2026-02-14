@@ -349,7 +349,12 @@ export async function syncPatreon(opts: SyncOptions): Promise<SyncStats> {
 
   const { campaignIds, discovered } = await upsertPatreonMemberships(opts.rawCookie);
   stats.membershipsDiscovered = discovered;
-  if (campaignIds.length === 0) return stats;
+  if (campaignIds.length === 0) {
+    stats.errors.push(
+      'No Patreon memberships were discovered. This usually means the cookie is incomplete/expired or Patreon changed the response shape. Re-copy the full raw Cookie header value (no “…” truncation) and try again.'
+    );
+    return stats;
+  }
 
   const pats = await db
     .select({

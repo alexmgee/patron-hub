@@ -12,6 +12,8 @@ export default async function SettingsPage() {
   const autoSyncEnabled = await getSetting<boolean>('auto_sync_enabled', true);
   const autoDownloadEnabled = await getSetting<boolean>('auto_download_enabled', true);
   const patreonCookie = await getSetting<string | null>('patreon_cookie', null);
+  const envPatreonCookie = (process.env.PATRON_HUB_PATREON_COOKIE ?? '').trim();
+  const patreonCookieEditable = envPatreonCookie.length === 0;
 
   const archiveDir = resolveArchiveDirectory(configuredArchiveDir);
   const writable = isArchiveWritable(configuredArchiveDir);
@@ -30,7 +32,11 @@ export default async function SettingsPage() {
     await setSetting('archive_dir', archiveDirValue);
     await setSetting('auto_sync_enabled', autoSync);
     await setSetting('auto_download_enabled', autoDownload);
-    await setSetting('patreon_cookie', patreonCookieInput.length > 0 ? patreonCookieInput : null);
+    // When an env override is set, editing the cookie in the UI is confusing and may fail due to size limits.
+    // Keep the SQLite value unchanged in that case.
+    if (patreonCookieEditable) {
+      await setSetting('patreon_cookie', patreonCookieInput.length > 0 ? patreonCookieInput : null);
+    }
   }
 
   return (
@@ -88,7 +94,7 @@ export default async function SettingsPage() {
               <div className="flex flex-wrap items-center gap-4">
                 <label className="flex items-center gap-2 text-sm text-zinc-300">
                   <input type="checkbox" name="auto_sync_enabled" defaultChecked={autoSyncEnabled} />
-                  Auto-sync enabled
+                  Background auto-sync (not yet implemented)
                 </label>
                 <label className="flex items-center gap-2 text-sm text-zinc-300">
                   <input type="checkbox" name="auto_download_enabled" defaultChecked={autoDownloadEnabled} />
@@ -100,17 +106,22 @@ export default async function SettingsPage() {
                 <div className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Patreon cookie (for sync)</div>
                 <textarea
                   name="patreon_cookie"
-                  defaultValue={patreonCookie ?? ''}
+                  defaultValue={patreonCookieEditable ? (patreonCookie ?? '') : ''}
                   rows={3}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none font-mono"
-                  placeholder="Paste full Cookie header value from an authenticated Patreon browser session"
+                  disabled={!patreonCookieEditable}
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none font-mono disabled:opacity-60"
+                  placeholder={
+                    patreonCookieEditable
+                      ? 'Paste full Cookie header value from an authenticated Patreon browser session'
+                      : 'Cookie is being provided via env var (edit your .env on the server instead)'
+                  }
                 />
                 <div className="mt-1 text-xs text-zinc-600">
                   Stored in local SQLite settings. You can also set <span className="font-mono">PATRON_HUB_PATREON_COOKIE</span> as an env var.
                 </div>
                 {process.env.PATRON_HUB_PATREON_COOKIE && (
                   <div className="mt-1 text-xs text-zinc-500">
-                    Env override in effect: <span className="font-mono text-zinc-300">PATRON_HUB_PATREON_COOKIE</span>
+                    Env override in effect: <span className="font-mono text-zinc-300">PATRON_HUB_PATREON_COOKIE</span> (editing disabled here)
                   </div>
                 )}
               </label>

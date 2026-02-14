@@ -24,7 +24,7 @@ graph TD
     LAN --> Server["cloud3-hoard<br/>Ubuntu + Docker"]
 
     subgraph PatronHub["Patron Hub Container"]
-      App["Next.js App (:3000)"]
+      App["Next.js App (container :3000)"]
       DB["SQLite (/data/patron-hub.db)"]
       Archive["Archive Files (/archive/...)"]
       App --> DB
@@ -32,6 +32,8 @@ graph TD
     end
 
     Server --> PatronHub
+    Server --> HostPort["Host published port (example :3010)"]
+    HostPort --> App
     App --> Patreon["Patreon API (cookie-auth MVP)"]
 
     Server -. optional storage mount .-> Synology["Synology cloud<br/>192.168.1.200"]
@@ -65,13 +67,19 @@ Run these on `cloud3-hoard`.
 git clone https://github.com/alexmgee/patron-hub.git
 cd patron-hub
 mkdir -p server-data server-archive
-docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build
+PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build
 ```
 
 Open:
 
-- `http://192.168.1.10:3000` (LAN)
-- `http://100.111.109.23:3000` (Tailscale)
+- LAN: `http://192.168.1.10:3010`
+- Tailscale: `http://100.111.109.23:3010`
+
+How to “open” one of these URLs:
+
+1. On your Mac (or any device on your home Wi-Fi), open a web browser (Chrome/Safari).
+2. Click the address bar at the top (where it shows a website address).
+3. Type `http://192.168.1.10:3010` and press Enter.
 
 First-time setup:
 
@@ -81,44 +89,105 @@ First-time setup:
 
 Optional no-login mode (trusted LAN only):
 
-1. Add `PATRON_HUB_DISABLE_AUTH=1` to `.env`.
-2. Restart compose.
+1. Create or edit a file named `.env` in `~/patron-hub` on the server.
+2. Add this line: `PATRON_HUB_DISABLE_AUTH=1`
+3. Restart Patron Hub (commands below).
+
+If `PATRON_HUB_DISABLE_AUTH=1` is enabled:
+
+- You do not need `/setup` or `/login`
+- Anyone on your LAN (or Tailscale) can open the app, so treat it as trusted-network only
 
 ## 5. Daily Operations
 
-From `/Users/agee2/Projects/patron-hub` on server:
+From `~/patron-hub` on server:
 
 ```bash
+# Make sure you're in the repo folder
+cd ~/patron-hub
+
 # Start / update
-docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build
+PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build
 
 # Stop
-docker compose -f docker-compose.yml -f docker-compose.lan.yml down
+PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml down
 
 # Check status
-docker compose -f docker-compose.yml -f docker-compose.lan.yml ps
+PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml ps
 
 # Follow logs
-docker compose -f docker-compose.yml -f docker-compose.lan.yml logs -f patron-hub
+PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml logs -f patron-hub
 ```
 
 ## 6. Patreon Sync Setup
 
-1. Login to Patron Hub.
-2. Open `Settings`.
-3. Paste your full authenticated Patreon cookie string into `Patreon cookie (for sync)`.
-4. Save.
-5. Hit `Sync` on dashboard.
-6. Optional backlog depth tuning: set `PATRON_HUB_PATREON_MAX_PAGES` in `.env` (default `40`).
-7. Optional resolver queue tuning:
-   - `PATRON_HUB_PATREON_HARVEST_JOB_LIMIT` (default `80`)
-   - `PATRON_HUB_PATREON_HARVEST_MAX_ATTEMPTS` (default `8`)
+Recommended (works best for huge cookie strings): set the cookie in `.env` on the server.
+
+1. On `cloud3-hoard`, open your `.env`:
+
+```bash
+cd ~/patron-hub
+nano .env
+```
+
+2. Add (or update) this line (one line, no quotes):
+
+```bash
+PATRON_HUB_PATREON_COOKIE=PASTE_THE_FULL_COOKIE_HEADER_VALUE_HERE
+```
+
+3. Restart Patron Hub:
+
+```bash
+PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build
+```
+
+4. In the web UI, click `Sync` on the dashboard.
+
+Notes:
+
+- The cookie must be the raw **Cookie** header value and must be copied fully. If your cookie contains a “…” character, it will fail.
+- Optional backlog depth tuning (more history, slower sync): set `PATRON_HUB_PATREON_MAX_PAGES` in `.env` (default `40`).
+- Optional resolver queue tuning:
+  - `PATRON_HUB_PATREON_HARVEST_JOB_LIMIT` (default `80`)
+  - `PATRON_HUB_PATREON_HARVEST_MAX_ATTEMPTS` (default `8`)
+
+Easy way to wipe just the cookie line in `.env` (Ubuntu):
+
+```bash
+cd ~/patron-hub
+sed -i 's/^PATRON_HUB_PATREON_COOKIE=.*/PATRON_HUB_PATREON_COOKIE=/' .env
+```
+
+## 6.1 What Sync Does (And How To “Harvest” Backlog)
+
+When you click `Sync`, Patron Hub:
+
+1. Reads your Patreon memberships and creates “Subscriptions” in the app.
+2. For each subscription, fetches post history (how far back depends on `PATRON_HUB_PATREON_MAX_PAGES`).
+3. Creates “Content Items” for each post.
+4. If a post has a direct downloadable URL and `Auto-download enabled` is on, it downloads the file into the archive.
+5. If a post does not have a direct URL, Patron Hub queues a “resolver job” and tries:
+   - Patreon post API details
+   - Patreon post HTML extraction
+   - (For HLS video playlists like `.m3u8`) downloads via `ffmpeg`
+
+Where your downloaded files end up:
+
+- On the server host: `~/patron-hub/server-archive/`
+- Inside the container: `/archive/`
+
+If you want to pull a bigger backlog:
+
+- Increase `PATRON_HUB_PATREON_MAX_PAGES` in `.env` (example: `120`)
+- Restart Patron Hub
+- Click `Sync` again
 
 ## 7. Homelab Hookup Checklist
 
 Check these are true:
 
-1. Patron Hub reachable on `http://192.168.1.10:3000`.
+1. Patron Hub reachable on `http://192.168.1.10:3010`.
 2. Container is running (`docker compose ... ps` shows `patron-hub` up).
 3. `server-data` has `patron-hub.db`.
 4. `server-archive` has creator/platform folders after archiving.

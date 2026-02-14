@@ -16,16 +16,19 @@ Patron Hub is local-first: SQLite + filesystem archive. For your current homelab
 3. Create persistent app directories:
    - `mkdir -p server-data server-archive`
 4. Build and start:
-   - `docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build`
+   - Defaults to host port `3000`
+   - If port `3000` is already in use on your server, pick another (example: `3010`)
+   - Example start command:
+     - `PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build`
 5. Open Patron Hub:
-   - LAN: `http://192.168.1.10:3000`
-   - Tailscale (if enabled): `http://100.111.109.23:3000`
+   - LAN (example): `http://192.168.1.10:3010`
+   - Tailscale (if enabled, example): `http://100.111.109.23:3010`
 6. First-time auth setup:
-   - `http://192.168.1.10:3000/setup`
-   - Then login at `http://192.168.1.10:3000/login`
+   - `http://192.168.1.10:3010/setup`
+   - Then login at `http://192.168.1.10:3010/login`
 7. Optional Patreon sync:
-   - Go to Settings
-   - Paste full authenticated Patreon cookie into `Patreon cookie (for sync)`
+   - Recommended: set `PATRON_HUB_PATREON_COOKIE=...` in `.env` on the server (cookie strings are very long)
+   - Restart compose
    - Click `Sync` on dashboard
    - Optional backlog depth tuning: set `PATRON_HUB_PATREON_MAX_PAGES` in `.env` (default `40`)
    - Optional resolver queue tuning:
@@ -54,10 +57,10 @@ You can keep these under the repo folder, or move them onto your NAS-backed path
 
 ## Ops Commands
 
-- Start/update: `docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build`
-- Stop: `docker compose -f docker-compose.yml -f docker-compose.lan.yml down`
-- Logs: `docker compose -f docker-compose.yml -f docker-compose.lan.yml logs -f patron-hub`
-- Status: `docker compose -f docker-compose.yml -f docker-compose.lan.yml ps`
+- Start/update: `PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --build`
+- Stop: `PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml down`
+- Logs: `PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml logs -f patron-hub`
+- Status: `PATRON_HUB_HTTP_PORT=3010 docker compose -f docker-compose.yml -f docker-compose.lan.yml ps`
 
 ## Public Domain Later (Caddy + TLS)
 

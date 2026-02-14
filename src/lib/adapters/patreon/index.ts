@@ -154,9 +154,60 @@ function parseMemberships(payload: JsonApiResponse): PatreonMembership[] {
   const membershipRefs = asArray(root.relationships?.memberships?.data as JsonApiRef | JsonApiRef[] | undefined);
   const results: PatreonMembership[] = [];
 
-  for (const ref of membershipRefs) {
-    if (!ref.type || !ref.id) continue;
-    const member = map.get(`${ref.type}:${ref.id}`);
+  const rootUserId = pickString(root.id);
+
+  function isMembershipResource(resource: JsonApiResource): boolean {
+    const t = (resource.type ?? '').toLowerCase();
+    if (!t) return false;
+    // Patreon has historically used `member` for a membership record, but this shape has changed over time.
+    if (t === 'member' || t === 'membership' || t.includes('membership') || t.includes('member')) return true;
+    return false;
+  }
+
+  function membershipMatchesUser(resource: JsonApiResource): boolean {
+    if (!rootUserId) return true; // best-effort fallback
+    const rels = resource.relationships ?? {};
+    const patron = rels.patron?.data as JsonApiRef | undefined;
+    const user = rels.user?.data as JsonApiRef | undefined;
+    const me = rels.me?.data as JsonApiRef | undefined;
+    // If the membership record doesn't explicitly point back to the user, don't exclude it.
+    if (!patron?.id && !user?.id && !me?.id) return true;
+    return patron?.id === rootUserId || user?.id === rootUserId || me?.id === rootUserId;
+  }
+
+  function getMembershipResources(): JsonApiResource[] {
+    // Primary path: current_user.relationships.memberships.data -> included resources.
+    const fromRefs: JsonApiResource[] = [];
+    for (const ref of membershipRefs) {
+      if (!ref.type || !ref.id) continue;
+      const member = map.get(`${ref.type}:${ref.id}`);
+      if (member) fromRefs.push(member);
+    }
+    if (fromRefs.length > 0) return fromRefs;
+
+    // Alternative: some endpoints return membership rows directly in `data`.
+    const dataRows = asArray(payload.data as JsonApiResource | JsonApiResource[] | undefined);
+    const direct = dataRows.filter((r) => isMembershipResource(r));
+    const directWithCampaign = direct.filter((r) => {
+      const campaignRef = r.relationships?.campaign?.data as JsonApiRef | undefined;
+      return Boolean(campaignRef?.id && campaignRef.type);
+    });
+    if (directWithCampaign.length > 0) return directWithCampaign;
+
+    // Fallback: Patreon sometimes omits the `memberships` relationship refs on current_user.
+    // In that case, scan `included` for membership-like resources that point back to this user.
+    const included = payload.included ?? [];
+    const scanned = included.filter((r) => isMembershipResource(r) && membershipMatchesUser(r));
+    // A membership should always point to a campaign; keep only those to reduce false positives.
+    return scanned.filter((r) => {
+      const campaignRef = r.relationships?.campaign?.data as JsonApiRef | undefined;
+      return Boolean(campaignRef?.id && campaignRef.type);
+    });
+  }
+
+  const membershipResources = getMembershipResources();
+
+  for (const member of membershipResources) {
     if (!member) continue;
 
     const campaignRef = member.relationships?.campaign?.data as JsonApiRef | undefined;
@@ -201,7 +252,10 @@ function parseMemberships(payload: JsonApiResponse): PatreonMembership[] {
       profileUrl,
       tierName,
       costCents: amountCents,
-      currency: 'USD',
+      currency:
+        pickString(member.attributes?.currency) ||
+        pickString((campaign.attributes?.currency as unknown) ?? null) ||
+        'USD',
       status: inferStatus(rawStatus),
       memberSinceIso,
     });
@@ -496,8 +550,13 @@ export async function resolvePatreonPostMedia(
 }
 
 export async function fetchPatreonMemberships(rawCookie: string): Promise<PatreonMembership[]> {
-  const response = await patreonFetchJson(
-    '/api/current_user?include=memberships.campaign.creator,memberships.currently_entitled_tiers&json-api-version=1.0',
+  const response = await patreonFetchJsonCandidates(
+    [
+      '/api/current_user?include=memberships.campaign.creator,memberships.currently_entitled_tiers&json-api-version=1.0',
+      '/api/current_user?include=memberships&json-api-version=1.0',
+      // Fallback endpoint (shape varies; parseMemberships is defensive).
+      '/api/memberships?include=campaign.creator,currently_entitled_tiers&json-api-version=1.0',
+    ],
     rawCookie
   );
   return parseMemberships(response);

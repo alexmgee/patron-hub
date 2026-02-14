@@ -10,11 +10,6 @@ export async function POST() {
   const user = await getAuthUser();
   if (!user) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
 
-  const autoSyncEnabled = await getSetting<boolean>('auto_sync_enabled', true);
-  if (!autoSyncEnabled) {
-    return NextResponse.json({ ok: false, disabled: true, error: 'Auto-sync is disabled in settings.' }, { status: 409 });
-  }
-
   const globalAutoDownloadEnabled = await getSetting<boolean>('auto_download_enabled', true);
   const patreonCookie =
     process.env.PATRON_HUB_PATREON_COOKIE || (await getSetting<string | null>('patreon_cookie', null));
