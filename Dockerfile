@@ -17,7 +17,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+# During image build, avoid touching runtime SQLite files while collecting page data.
+RUN PATRON_HUB_SKIP_BOOTSTRAP=1 npm run build
 
 FROM node:22-bookworm-slim AS runner
 
