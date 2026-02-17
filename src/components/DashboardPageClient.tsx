@@ -21,7 +21,26 @@ type NewSubscriptionPayload = {
 };
 
 type SyncApiResponse = {
+  ok?: boolean;
+  started?: boolean;
+  message?: string;
   error?: string;
+  sync?: {
+    running?: boolean;
+    startedAt?: string | null;
+    finishedAt?: string | null;
+    lastError?: string | null;
+    lastResult?: {
+      membershipsDiscovered?: number;
+      subscriptionsSynced?: number;
+      postsFound?: number;
+      postsInserted?: number;
+      postsUpdated?: number;
+      itemsDownloaded?: number;
+      harvestJobsProcessed?: number;
+      harvestJobsResolved?: number;
+    } | null;
+  };
   patreon?: {
     membershipsDiscovered?: number;
     subscriptionsSynced?: number;
@@ -33,6 +52,21 @@ type SyncApiResponse = {
     harvestJobsResolved?: number;
   };
 };
+
+type SyncStatsPayload =
+  | SyncApiResponse['patreon']
+  | NonNullable<NonNullable<SyncApiResponse['sync']>['lastResult']>;
+
+function formatSyncStats(stats: SyncStatsPayload): string {
+  if (!stats) return 'Sync complete.';
+  return `Sync complete: memberships ${stats.membershipsDiscovered ?? 0}, subscriptions ${
+    stats.subscriptionsSynced ?? 0
+  }, posts ${stats.postsFound ?? 0}, inserted ${stats.postsInserted ?? 0}, updated ${
+    stats.postsUpdated ?? 0
+  }, downloaded ${stats.itemsDownloaded ?? 0}, harvest-jobs ${stats.harvestJobsProcessed ?? 0}/${
+    stats.harvestJobsResolved ?? 0
+  }.`;
+}
 
 function slugify(input: string): string {
   return input
@@ -120,19 +154,23 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
       return;
     }
 
+    if (data?.sync?.running) {
+      setSyncMessage(data.started ? 'Sync started in the background. Click Sync again to check status.' : 'Sync is already running in the background.');
+      return;
+    }
+
+    if (data?.sync?.lastError) {
+      setSyncError(`Sync failed: ${data.sync.lastError}`);
+      return;
+    }
+
+    if (data?.sync?.lastResult) {
+      setSyncMessage(formatSyncStats(data.sync.lastResult));
+      return;
+    }
+
     const patreon = data?.patreon;
-
-    const msg = patreon
-      ? `Sync complete: memberships ${patreon.membershipsDiscovered ?? 0}, subscriptions ${
-          patreon.subscriptionsSynced ?? 0
-        }, posts ${patreon.postsFound ?? 0}, inserted ${patreon.postsInserted ?? 0}, updated ${
-          patreon.postsUpdated ?? 0
-        }, downloaded ${patreon.itemsDownloaded ?? 0}, harvest-jobs ${patreon.harvestJobsProcessed ?? 0}/${
-          patreon.harvestJobsResolved ?? 0
-        }.`
-      : 'Sync complete.';
-
-    setSyncMessage(msg);
+    setSyncMessage(formatSyncStats(patreon));
   };
 
   const handleCreateSubscription = async () => {

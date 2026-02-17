@@ -6,6 +6,71 @@ import { getSetting } from '@/lib/db/settings';
 import { getAuthUser } from '@/lib/auth/api';
 import { syncPatreon } from '@/lib/sync/patreon';
 
+type SyncState = {
+  running: boolean;
+  startedAt: string | null;
+  finishedAt: string | null;
+  lastStartedByUserId: number | null;
+  lastResult: Awaited<ReturnType<typeof syncPatreon>> | null;
+  lastError: string | null;
+};
+
+const syncState: SyncState = {
+  running: false,
+  startedAt: null,
+  finishedAt: null,
+  lastStartedByUserId: null,
+  lastResult: null,
+  lastError: null,
+};
+
+function snapshotState() {
+  return {
+    running: syncState.running,
+    startedAt: syncState.startedAt,
+    finishedAt: syncState.finishedAt,
+    lastStartedByUserId: syncState.lastStartedByUserId,
+    lastError: syncState.lastError,
+    hasLastResult: Boolean(syncState.lastResult),
+    lastResult: syncState.lastResult,
+  };
+}
+
+async function runSyncInBackground(params: {
+  rawCookie: string;
+  globalAutoDownloadEnabled: boolean;
+  startedByUserId: number;
+}) {
+  syncState.running = true;
+  syncState.startedAt = new Date().toISOString();
+  syncState.finishedAt = null;
+  syncState.lastStartedByUserId = params.startedByUserId;
+  syncState.lastError = null;
+  syncState.lastResult = null;
+
+  try {
+    const patreonStats = await syncPatreon({
+      rawCookie: params.rawCookie,
+      globalAutoDownloadEnabled: params.globalAutoDownloadEnabled,
+    });
+    syncState.lastResult = patreonStats;
+    syncState.lastError = null;
+  } catch (err) {
+    syncState.lastResult = null;
+    syncState.lastError = err instanceof Error ? err.message : String(err);
+  } finally {
+    syncState.running = false;
+    syncState.finishedAt = new Date().toISOString();
+  }
+}
+
+export async function GET() {
+  const user = await getAuthUser();
+  if (!user) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+
+  return NextResponse.json({ ok: true, sync: snapshotState() });
+}
+
 export async function POST() {
   const user = await getAuthUser();
   if (!user) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
@@ -30,15 +95,25 @@ export async function POST() {
     );
   }
 
-  try {
-    const patreonStats = await syncPatreon({
-      rawCookie: patreonCookie,
-      globalAutoDownloadEnabled,
+  if (syncState.running) {
+    return NextResponse.json({
+      ok: true,
+      started: false,
+      message: 'Sync is already running in the background.',
+      sync: snapshotState(),
     });
-
-    return NextResponse.json({ ok: true, patreon: patreonStats });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: `Sync failed: ${message}` }, { status: 500 });
   }
+
+  void runSyncInBackground({
+    rawCookie: patreonCookie,
+    globalAutoDownloadEnabled,
+    startedByUserId: user.id,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    started: true,
+    message: 'Sync started in the background.',
+    sync: snapshotState(),
+  });
 }
