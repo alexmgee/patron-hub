@@ -16,11 +16,13 @@ if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// Create SQLite connection
-const sqlite = new Database(DB_PATH);
+// Create SQLite connection.
+// Add a busy timeout so concurrent startup/build workers wait instead of failing with SQLITE_BUSY.
+const sqlite = new Database(DB_PATH, { timeout: 30_000 });
 
 // Enable WAL mode for better concurrent access
 sqlite.pragma('journal_mode = WAL');
+sqlite.pragma('busy_timeout = 30000');
 
 // Dev-friendly bootstrap (create schema + seed sample data).
 // Avoid side effects during `next build` while still allowing schema upgrades at runtime.
