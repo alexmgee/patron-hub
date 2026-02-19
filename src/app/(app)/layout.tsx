@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
 import { getAuthState } from '@/lib/auth/server';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AppLayout(props: { children: React.ReactNode }) {
   const auth = await getAuthState();
 
@@ -14,4 +16,3 @@ export default async function AppLayout(props: { children: React.ReactNode }) {
 
   return props.children;
 }
-

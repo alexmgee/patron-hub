@@ -16,18 +16,25 @@ if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+// Build-time Next workers can import server modules in parallel.
+// Keep DB init side-effect-free there to avoid SQLITE_BUSY during image builds.
+const isBuildPhase =
+  process.env.PATRON_HUB_SKIP_BOOTSTRAP === '1' ||
+  process.env.NEXT_PHASE === 'phase-production-build';
+
 // Create SQLite connection.
 // Add a busy timeout so concurrent startup/build workers wait instead of failing with SQLITE_BUSY.
 const sqlite = new Database(DB_PATH, { timeout: 30_000 });
 
-// Enable WAL mode for better concurrent access
-sqlite.pragma('journal_mode = WAL');
-sqlite.pragma('busy_timeout = 30000');
+if (!isBuildPhase) {
+  // Enable WAL mode for better concurrent access at runtime.
+  sqlite.pragma('journal_mode = WAL');
+  sqlite.pragma('busy_timeout = 30000');
+}
 
 // Dev-friendly bootstrap (create schema + seed sample data).
 // Avoid side effects during `next build` while still allowing schema upgrades at runtime.
-const isNextBuild = process.env.NEXT_PHASE === 'phase-production-build';
-if (!isNextBuild || process.env.PATRON_HUB_FORCE_BOOTSTRAP === '1') {
+if (!isBuildPhase || process.env.PATRON_HUB_FORCE_BOOTSTRAP === '1') {
   bootstrapDb(sqlite);
 }
 

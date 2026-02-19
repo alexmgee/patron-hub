@@ -3,6 +3,8 @@ import { SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from '@/lib/auth/constants';
 import { anyUsersExist, createSession, createUser } from '@/lib/auth/session';
 import { hashPassword } from '@/lib/auth/password';
 
+export const dynamic = 'force-dynamic';
+
 type Payload = {
   email: string;
   password: string;
@@ -36,4 +38,3 @@ export async function POST(req: Request) {
   });
   return res;
 }
-
