@@ -30,6 +30,7 @@ type SyncApiResponse = {
     startedAt?: string | null;
     finishedAt?: string | null;
     lastError?: string | null;
+    summary?: string;
     lastResult?: {
       membershipsDiscovered?: number;
       subscriptionsSynced?: number;
@@ -155,7 +156,8 @@ export default function DashboardPageClient(props: { creators: CreatorCardData[]
     }
 
     if (data?.sync?.running) {
-      setSyncMessage(data.started ? 'Sync started in the background. Click Sync again to check status.' : 'Sync is already running in the background.');
+      const runningMsg = data.sync.summary || 'Sync is running in the background.';
+      setSyncMessage(data.started ? `Sync started in the background. ${runningMsg}` : runningMsg);
       return;
     }
 
